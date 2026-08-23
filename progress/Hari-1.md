@@ -40,6 +40,16 @@
   - Add Fastify type augmentation (apps/api/src/types.ts)
   - Create packages/database/src/index.ts
   - Add tsconfig.json to packages/database + apps/web
+- 01:00 — [2] Full Customization System — ✅ — `f7ffeea` feat: semua aspek kustomisasi hardcover
+  - design-types: add CornerShape, EdgeFinish, hasDustJacket, headbandCode, ribbonCodes to FinishConfig
+  - configurator store: fix BaseConfig field names (paper→paperCode, board→boardCode), add endpaperCode
+  - Finish page: full rewrite — cover finish (4), corner shape (square/round), edge finish (6), dust jacket toggle, headband colors (4), ribbon markers (max 2)
+  - Base page: add endpaper selector (ENDFLAT/ENDPLAIN/ENDPAT), fix field names to match schema
+  - Review page: full config summary, real-time price with all finish modifiers, spine validation
+  - Pricing engine: edge finish modifiers (plain/gilded/sprayed/stenciled), dust jacket, headband/ribbon pricing, volume discounts 5%/8%
+  - Catalog routes: new static endpoints /corner-shapes, /edge-finishes, /headbands, /ribbons
+  - API pricing route: accepts all new fields, signature binding validation (min 80 hal, kelipatan 4)
+  - GitHub push: `f7ffeea` ✅
 - 17:40 — [2] Dev Server Verify — ✅
   - API: GET /store/sizes ✅ → 3 size presets
   - API: GET /store/materials?type=paper ✅ → 4 paper materials
