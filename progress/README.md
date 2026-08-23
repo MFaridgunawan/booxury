@@ -63,7 +63,7 @@ Sonnet stuck > 1 jam atau 2 attempt gagal → stop, dokumentasikan, escalate ke 
 | Hari | Status | DoD | Carried Over |
 |---|---|---|---|
 | 0 | ✅ selesai | 6/7 | Riset percetakan DITUNDA (manual, perlu user hubungi percetakan) |
-| 1 | ⬜ belum | — | — |
+| 1 | 🔄 in-progress | — | Dev servers verified, API endpoints pass |
 | 2 | ⬜ belum | — | — |
 | 3 | ⬜ belum | — | — |
 | 4 | ⬜ belum | — | — |

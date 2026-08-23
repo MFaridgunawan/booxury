@@ -35,7 +35,37 @@
 
 > Format: HH:MM — [Task N] — ✅/⚠️/❌ — `[hash]` [type]: [message]
 
-(akan terisi saat eksekusi)
+- 17:30 — [1] API Fixes — ✅ — `72732d7` fix: DATABASE_URL env, Prisma types
+  - Add DATABASE_URL to turbo.json env passthrough
+  - Add Fastify type augmentation (apps/api/src/types.ts)
+  - Create packages/database/src/index.ts
+  - Add tsconfig.json to packages/database + apps/web
+- 17:40 — [2] Dev Server Verify — ✅
+  - API: GET /store/sizes ✅ → 3 size presets
+  - API: GET /store/materials?type=paper ✅ → 4 paper materials
+  - API: POST /price-quote ✅ → spine=11.49mm, total=Rp85.000
+  - Web: http://localhost:3000 ✅ → HTTP 200, title correct
+
+---
+
+## CHECKPOINT (Opus 4.6 — EOD)
+
+### DoD Status
+- [x] Monorepo scaffold ✅ — pnpm workspaces + turbo, Next.js + Fastify (Hari 0)
+- [x] Prisma schema + migration ✅ — 10 tables, seeded (Hari 0)
+- [x] PDF engine ✅ — 3 PDFs + ZIP generated (Hari 0)
+- [x] `pnpm dev` bisa start ✅ — API :3001, Web :3000
+- [x] API endpoints: GET /store/sizes ✅, GET /store/materials ✅, POST /price-quote ✅
+- [x] Database seeded with materials/sizes/accessories/demo users ✅
+
+### Carried Over
+- (none — Hari 0 + 1 deliverables complete)
+
+### Besok's Focus (Hari 2)
+- NextAuth credentials setup + JWT
+- Wizard Fase 1 page complete (spine preview + price)
+- API: POST /api/designs (auth protected)
+- API: GET /store/accessories, /store/cover-finishes
 
 ---
 
