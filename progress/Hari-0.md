@@ -2,7 +2,7 @@
 
 **Tanggal**: Minggu, 23 Agustus 2026
 **Agent**: Opus 4.6 (PLAN) + Sonnet 4.6 (EXEC)
-**Status**: 🔄 in-progress
+**Status**: ✅ selesai
 **Detail roadmap**: [`../planning/roadmap-sprint1.md`](../planning/roadmap-sprint1.md#hari-0--setup--riset-percetakan-mitra)
 
 > ⚠️ **Hari ini TIDAK BOLEH di-skip.** Jangan mulai coding sebelum spine formula dan pricing di-update dengan data aktual dari percetakan.
