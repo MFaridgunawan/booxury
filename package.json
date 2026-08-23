@@ -1,0 +1,23 @@
+{
+  "name": "booxury",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "turbo test",
+    "lint": "turbo lint",
+    "db:migrate": "pnpm --filter @booxury/database migrate:dev",
+    "db:studio": "pnpm --filter @booxury/database studio",
+    "db:seed": "pnpm --filter @booxury/database seed",
+    "pdf:test": "pnpm --filter @booxury/pdf-engine test:local"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.3",
+    "typescript": "^5.7.3"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "@booxury/tsconfig",
+  "version": "0.1.0",
+  "private": true,
+  "files": [],
+  "devDependencies": {
+    "bcrypt": "^5.1.1"
+  }
+}
