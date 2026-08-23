@@ -33,12 +33,14 @@ interface ConfiguratorStore {
   reset: () => void;
 }
 
+// All field names match @booxury/design-types BaseConfig
 const DEFAULT_BASE: BaseConfig = {
   size: 'A5',
   pages: 100,
-  paper: 'HVS80',
-  board: 'BOARD20',
-  layout: 'lined',
+  paperCode: 'BOOK72',
+  boardCode: 'BOARD20',
+  endpaperCode: 'ENDPLAIN',
+  layout: 'plain',
 };
 
 const DEFAULT_DESIGN_PAYLOAD: DesignPayload = {
@@ -48,8 +50,14 @@ const DEFAULT_DESIGN_PAYLOAD: DesignPayload = {
   finishZones: [],
 };
 
+// New FinishConfig fields: cornerShape, edgeFinish, hasDustJacket, headbandCode, ribbonCodes
 const DEFAULT_FINISH: FinishConfig = {
   coverFinish: 'doff',
+  cornerShape: 'square',
+  edgeFinish: 'plain',
+  hasDustJacket: false,
+  headbandCode: undefined,
+  ribbonCodes: [],
   accessories: [],
 };
 

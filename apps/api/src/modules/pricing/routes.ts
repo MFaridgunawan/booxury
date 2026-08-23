@@ -1,28 +1,29 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { calculatePrice } from '@booxury/pricing-engine';
-import { calculateSpine } from '@booxury/spine-calc';
+import { calculatePrice, calculateSpineForPricing } from '@booxury/pricing-engine';
+import { validateSpine } from '@booxury/spine-calc';
 
 const PriceQuoteSchema = z.object({
   sizeCode: z.enum(['A5', 'B5', 'A6']),
-  pages: z.number().min(20).max(400),
+  pages: z.number().min(80).max(400),
   paperCode: z.string(),
   boardCode: z.string(),
-  layout: z.enum(['PLAIN', 'LINED']),
-  coverFinishCode: z.enum(['doff', 'glossy', 'canvas']),
+  endpaperCode: z.string().default('ENDPLAIN'),
+  layout: z.enum(['plain', 'lined']),
+  // Finish options
+  coverFinish: z.enum(['doff', 'glossy', 'canvas', 'leatherette']).default('doff'),
+  cornerShape: z.enum(['square', 'round']).default('square'),
+  edgeFinish: z.enum(['plain', 'gilded_gold', 'gilded_silver', 'sprayed_red', 'sprayed_blue', 'stenciled']).default('plain'),
+  hasDustJacket: z.boolean().default(false),
+  headbandCode: z.string().optional(),
+  ribbonCodes: z.array(z.string()).max(2).default([]),
   accessories: z.array(z.object({ code: z.string(), type: z.enum(['STRAP', 'RIBBON']) })).optional(),
 });
 
-const PAPER_CALIPER: Record<string, number> = {
-  HVS80: 0.105, HVS100: 0.130, BOOK70: 0.082, BOOK80: 0.095,
-};
-const BOARD_THICKNESS: Record<string, number> = {
-  BOARD15: 1.5, BOARD20: 2.0, BOARD25: 2.5, BOARD30: 3.0,
-};
-const SIZE_DIMS: Record<string, { widthMm: number; heightMm: number; basePrice: number }> = {
-  A5: { widthMm: 148, heightMm: 210, basePrice: 35000 },
-  B5: { widthMm: 176, heightMm: 250, basePrice: 45000 },
-  A6: { widthMm: 105, heightMm: 148, basePrice: 25000 },
+const SIZE_DIMS: Record<string, { widthMm: number; heightMm: number }> = {
+  A5: { widthMm: 148, heightMm: 210 },
+  B5: { widthMm: 176, heightMm: 250 },
+  A6: { widthMm: 105, heightMm: 148 },
 };
 
 export async function pricingRoutes(fastify: FastifyInstance) {
@@ -34,24 +35,50 @@ export async function pricingRoutes(fastify: FastifyInstance) {
       });
     }
 
-    const { sizeCode, pages, paperCode, boardCode, layout, coverFinishCode, accessories = [] } = parsed.data;
+    const data = parsed.data;
 
-    const caliper = PAPER_CALIPER[paperCode] ?? 0.105;
-    const board = BOARD_THICKNESS[boardCode] ?? 2.0;
+    // Signature binding: pages must be divisible by 4
+    if (data.pages % 4 !== 0) {
+      return reply.status(422).send({
+        error: { code: 'VALIDATION_FAILED', message: 'Jumlah halaman harus kelipatan 4 (signature binding)' }
+      });
+    }
 
-    const spine = calculateSpine({
-      pages, paperCaliperMm: caliper, boardThicknessMm: board,
-      endpaperThicknessMm: 0.12, hingeAllowanceMm: 2.0,
-    }, { widthMm: SIZE_DIMS[sizeCode].widthMm, heightMm: SIZE_DIMS[sizeCode].heightMm });
+    const spine = calculateSpineForPricing(data.pages, data.paperCode, data.boardCode, data.endpaperCode);
+    const validation = validateSpine(spine.spineWidthMm, data.sizeCode, data.pages);
+
+    if (!validation.valid) {
+      return reply.status(422).send({
+        error: { code: 'SPINE_INVALID', message: validation.reason }
+      });
+    }
 
     const quote = calculatePrice(
-      { sizeCode, pages, paperCode, boardCode, layout },
-      { coverFinishCode, accessories },
+      {
+        sizeCode: data.sizeCode,
+        pages: data.pages,
+        paperCode: data.paperCode,
+        boardCode: data.boardCode,
+        endpaperCode: data.endpaperCode,
+        layout: data.layout,
+      },
+      {
+        coverFinish: data.coverFinish,
+        cornerShape: data.cornerShape,
+        edgeFinish: data.edgeFinish,
+        hasDustJacket: data.hasDustJacket,
+        headbandCode: data.headbandCode,
+        ribbonCodes: data.ribbonCodes,
+        accessories: (data.accessories ?? []) as Array<{ code: string; type: 'STRAP' | 'RIBBON' }>,
+      },
       {}
     );
 
     return {
       spine_width_mm: spine.spineWidthMm,
+      total_sheet_width_mm: spine.totalSheetWidthMm,
+      total_sheet_height_mm: spine.totalSheetHeightMm,
+      min_pages: spine.minPages,
       ...quote,
     };
   });
