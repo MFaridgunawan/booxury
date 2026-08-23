@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { WizardProgress } from '../../../components/wizard/WizardProgress';
+import { WizardProgress } from '../../components/wizard/WizardProgress';
 
 export default function CustomizeLayout({ children }: { children: React.ReactNode }) {
   return (

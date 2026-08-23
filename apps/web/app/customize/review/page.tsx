@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useConfiguratorStore } from '../../lib/stores/configurator';
+import { useConfiguratorStore } from '../../../lib/stores/configurator';
 
 const COVER_LABELS: Record<string, string> = {
   doff: 'Laminasi Doff', glossy: 'Laminasi Glossy',

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useConfiguratorStore } from '../../lib/stores/configurator';
+import { useConfiguratorStore } from '../../../lib/stores/configurator';
 import { useQuery } from '@tanstack/react-query';
 
 export default function CoverPage() {

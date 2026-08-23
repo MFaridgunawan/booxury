@@ -1,7 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useConfiguratorStore } from '../../lib/stores/configurator';
+import { useConfiguratorStore } from '../../../lib/stores/configurator';
 
 const COVER_FINISHES = [
   { code: 'doff',       name: 'Laminasi Doff',        desc: 'Matte, halus, kesan premium' },

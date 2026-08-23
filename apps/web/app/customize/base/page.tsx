@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useConfiguratorStore } from '../../lib/stores/configurator';
+import { useConfiguratorStore } from '../../../lib/stores/configurator';
 import { PAPER_CATEGORIES } from '@booxury/design-types';
 
 const SIZES = [
