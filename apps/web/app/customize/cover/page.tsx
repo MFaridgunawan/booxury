@@ -61,8 +61,8 @@ export default function CoverPage() {
             <div className="space-y-2 text-sm text-gray-600">
               <div className="flex justify-between"><span>Ukuran</span><span className="font-medium">{base.size}</span></div>
               <div className="flex justify-between"><span>Halaman</span><span className="font-medium">{base.pages}</span></div>
-              <div className="flex justify-between"><span>Kertas</span><span className="font-medium">{base.paper}</span></div>
-              <div className="flex justify-between"><span>Board</span><span className="font-medium">{base.board}</span></div>
+              <div className="flex justify-between"><span>Kertas</span><span className="font-medium">{base.paperCode}</span></div>
+              <div className="flex justify-between"><span>Board</span><span className="font-medium">{base.boardCode}</span></div>
             </div>
           </div>
 
