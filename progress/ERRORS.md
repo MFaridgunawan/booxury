@@ -22,9 +22,10 @@
 | Type | Count | Error IDs |
 |---|---|---|
 | Module not found | 5 | E001, E002, E003, E004, E005 |
-| TypeScript type | 2 | E006, E007 |
+| TypeScript type | 4 | E006, E007, E011, E012 |
 | Build configuration | 2 | E008, E009 |
 | Import order | 1 | E010 |
+| 3D / Preview | 2 | E015, E016 |
 
 ## Errors
 
@@ -128,13 +129,62 @@
 - **Prevention**: Selalu letakkan semua import di TOP of file, sebelum code execution apa pun.
 - **Status**: ✅ resolved
 
----
+### E011 — 2026-08-25 — Hari 5 (continuation) — medium
+- **Task**: Restore design from API (GET /designs/:id)
+- **Symptom**: TypeScript error `Property 'paper' does not exist` di `customize/cover/page.tsx`
+- **Repro**: `pnpm --filter @booxury/web build`
+- **Root cause**: Type annotation pakai nama lama `paperMaterial?: { code: string }` padahal API return `paper: { code: string }` (Prisma relation field).
+- **Fix**: Ubah type annotation jadi `paper?: { code: string }; board?: { code: string }` sesuai Prisma schema. Relation field names adalah `paper` dan `board`.
+- **Files affected**: `apps/web/app/customize/cover/page.tsx`
+- **Prevention**: Sync type annotation dengan actual API response. Prisma relation field names tidak boleh disangka.
+- **Status**: ✅ resolved
 
-## Pre-existing (unresolved this sprint)
+### E012 — 2026-08-25 — Hari 5 (continuation) — medium
+- **Task**: Checkout flow — designId missing from cart
+- **Symptom**: Checkout blocked karena `designId` tidak ada di CartItem interface
+- **Repro**: Review → add-to-cart → checkout gagal
+- **Root cause**: `addToCart` tidak terima/peneruskan `designId`. `CartItem` interface tidak punya field `designId`.
+- **Fix**: Tambah `designId?: string` ke `CartItem`. Review page pass `designId` saat add-to-cart. Checkout handle `designId` optional.
+- **Files affected**: `apps/web/lib/stores/configurator.ts`, `apps/web/app/customize/review/page.tsx`, `apps/web/app/checkout/page.tsx`
+- **Prevention**: DesignId harus flowable dari design → cart → checkout.
+- **Status**: ✅ resolved
 
-### API TypeScript Config — medium
-- **Task**: `pnpm build` → `@booxury/api#build` fails
-- **Symptom**: TypeScript compiler options interactive prompt (lib, allowJs, checkJs options)
-- **Root cause**: `apps/api/tsconfig.json` tidak punya `compilerOptions` lengkap — build script menjalankan `tsc` tanpa config.
-- **Fix**: Di luar scope Hari 5 3D work — perlu fix terpisah.
-- **Status**: ⚠️ workaround (web app build works fine)
+### E013 — 2026-08-26 — Hari 8 — high
+- **Task**: Navigasi langsung ke rute root `/customize`
+- **Symptom**: 500 Internal Server Error saat mengakses `/customize`
+- **Repro**: Buka `http://localhost:3000/customize` dari browser atau curl
+- **Root cause**: Direktori `apps/web/app/customize` hanya berisi sub-rute (`base`, `cover`, `finish`, `review`) tanpa memiliki `page.tsx` root index, serta NextAuth secret belum memiliki fallback string di edge runtime.
+- **Fix**: Membuat `apps/web/app/customize/page.tsx` dengan `redirect('/customize/base')`, menambahkan fallback secret di `apps/web/lib/auth.ts`, dan memperbarui `middleware.ts` agar mengizinkan akses tamu (guest) ke alur customize.
+- **Files affected**: `apps/web/app/customize/page.tsx`, `apps/web/lib/auth.ts`, `apps/web/middleware.ts`
+- **Prevention**: Setiap folder sub-app router dengan layout harus memiliki root `page.tsx` atau redirect eksplisit.
+- **Status**: ✅ resolved
+
+### E014 — 2026-08-26 — Hari 8 — high
+- **Task**: Client-side rendering pada Canvas Editor & 3D Webpack bundles
+- **Symptom**: `Runtime TypeError: __webpack_modules__[moduleId] is not a function`
+- **Repro**: Buka `http://localhost:3000/customize/cover` di browser
+- **Root cause**: Terjadi *nested dynamic import* ganda (`CanvasEditor` di-import `dynamic()` di `cover/page.tsx`, lalu `KonvaStage` di-import `dynamic()` lagi di dalam `CanvasEditor`). Selain itu, terdapat side-effect `gsap.registerPlugin()` di level modul pada `packages/three/src/scene-3d.tsx` yang dievaluasi sebelum Webpack chunk siap.
+- **Fix**: Mengubah import `KonvaStage` di `CanvasEditor/index.tsx` menjadi import langsung, menghapus `gsap.registerPlugin()` dari `scene-3d.tsx`, serta mendaftarkan seluruh paket monorepo (`@booxury/spine-calc`, `@booxury/pricing-engine`, `@booxury/design-types`) ke `transpilePackages` di `next.config.ts`.
+- **Files affected**: `apps/web/components/configurator/CanvasEditor/index.tsx`, `packages/three/src/scene-3d.tsx`, `apps/web/next.config.ts`
+- **Prevention**: Hindari nesting `next/dynamic` di dalam komponen yang sudah di-load secara dinamis; daftarkan semua paket monorepo internal di `transpilePackages`.
+- **Status**: ✅ resolved
+
+### E015 — 2026-08-26 — Hari 8 (Review) — high
+- **Task**: "Buka buku" animation — halaman tidak membuka saat cover terbuka
+- **Symptom**: Klik tombol "📖 Buka Isi" di sidebar wizard mengubah `coverOpenAngle` ke 1.35, tapi halaman tetap menjadi satu block statis. Cover berputar tapi halaman tidak ikut fanning — efek "buka buku" terasa tidak realistis.
+- **Repro**: Buka `/customize/base`, klik tombol "📖 Buka Isi" di toolbar kamera sidebar → cover terbuka tapi halaman tetap statis
+- **Root cause**: `HardcoverModel` di `packages/three/src/hardcover-model.tsx` render halaman sebagai single `boxGeometry` yang tidak merespons `coverOpenAngle`. Tidak ada animasi fanning.
+- **Fix**: Ganti single page block dengan komponen `BookPages` yang render 12 individual page sheets. Setiap sheet diposisikan sepanjang sumbu Z (spine ke depan) dan dirotasi oleh `-(i / (totalSheets - 1)) * coverOpenAngle` — pages dekat spine rotate kurang, pages dekat cover rotate lebih, menciptakan efek buka buku realistis.
+- **Files affected**: `packages/three/src/hardcover-model.tsx`
+- **Prevention**: Animasi 3D yang bergantung pada props harus bereaksi terhadap perubahan props tersebut.
+- **Status**: ✅ resolved
+
+### E016 — 2026-08-26 — Hari 8 (Review) — medium
+- **Task**: Review page tidak punya visual 3D preview
+- **Symptom**: Halaman `/customize/review` hanya menampilkan teks checklist dan ringkasan konfigurasi. Tidak ada visual preview buku 3D untuk user review sebelum checkout. Sidebar wizard (WizardSidebar) menampilkan 3D preview tapi di luar area konten utama review.
+- **Repro**: Navigasi ke `/customize/review` → tidak ada komponen visual preview buku
+- **Root cause**: Review page (`apps/web/app/customize/review/page.tsx`) tidak mount komponen Scene3D/Book3DPreview di dalam konten halaman. Sidebar wizard punya 3D scene tapi review page berdiri sendiri tanpa preview visual.
+- **Fix**: Tambahkan komponen `Scene3D` (via `next/dynamic({ ssr: false })`) di bagian atas review page, pass semua finish config (coverFinish, cornerShape, edgeFinish, dustJacket, headband, ribbon) dan base config (size, spineWidthMm, layout, paperCode) sebagai props. Set `phase="review"` agar kamera menggunakan preset review yang sesuai.
+- **Files affected**: `apps/web/app/customize/review/page.tsx`
+- **Prevention**: Setiap fase wizard yang menampilkan hasil kustomisasi harus memiliki komponen visual preview.
+- **Status**: ✅ resolved
