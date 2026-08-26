@@ -25,7 +25,7 @@
 | TypeScript type | 4 | E006, E007, E011, E012 |
 | Build configuration | 2 | E008, E009 |
 | Import order | 1 | E010 |
-| 3D / Preview | 2 | E015, E016 |
+| 3D / Preview | 4 | E015, E016, E017, E018 |
 
 ## Errors
 
@@ -188,3 +188,25 @@
 - **Files affected**: `apps/web/app/customize/review/page.tsx`
 - **Prevention**: Setiap fase wizard yang menampilkan hasil kustomisasi harus memiliki komponen visual preview.
 - **Status**: ✅ resolved
+
+### E017 — 2026-08-26 — Hari 8 (Review) — critical
+- **Task**: Multiple Scene3D instances on landing + review page
+- **Symptom**: `Cannot read properties of null (reading 'alpha')` crash saat halaman dimuat. Landing page menampilkan "Application error" overlay; 3D canvas menghilang total. Review page sama crash-nya.
+- **Repro**: Buka `http://localhost:3000` atau `/customize/review` → crash dalam ~5 detik. Wizard pages (base, cover, finish) dengan 1 Scene3D TIDAK crash.
+- **Root cause**: Landing page mount 2 instance `Scene3D` secara bersamaan (hero + scroll-section), dan review page mount 2 instance (`WizardSidebar` + inline Scene3D). Dua R3F Canvas/WebGL contexts dibuat bersamaan, dan postprocessing layer (`EffectComposer`) dari instance kedua crash dengan `alpha` error karena konteks WebGL belum siap.
+- **Fix**:
+  - Review page: hapus Scene3D inline, ganti dengan SVG placeholder. WizardSidebar sudah menampilkan 3D model — tidak perlu instance kedua.
+  - Landing page: singleton slot queue di `landing-canvas-wrapper.tsx`. Hanya 1 LandingCanvas yang boleh aktif sekaligus. Instance kedua (scroll-section) di-queue dan di-delay 2 detik.
+- **Files affected**: `apps/web/app/customize/review/page.tsx`, `apps/web/components/three/landing-canvas-wrapper.tsx`
+- **Prevention**: Jangan mount 2 Scene3D instance secara bersamaan. Gunakan singleton pattern atau queue untuk instance kedua.
+- **Status**: ✅ resolved
+
+### E018 — 2026-08-26 — Hari 8 (Review) — low
+- **Task**: 404 resource on landing page
+- **Symptom**: Console error "Failed to load resource: the server responded with a status of 404" di landing page.
+- **Repro**: Buka `http://localhost:3000`, inspect console.
+- **Root cause**: Salah satu asset (gambar, font, atau file statis) tidak ditemukan. Perlu investigasi lebih lanjut untuk menentukan resource spesifik.
+- **Fix**: Diperlukan investigasi lebih lanjut untuk menentukan resource 404 yang spesifik.
+- **Files affected**: TBD
+- **Prevention**: Pastikan semua asset paths valid dan merujuk ke file yang ada.
+- **Status**: ⚠️ unresolved

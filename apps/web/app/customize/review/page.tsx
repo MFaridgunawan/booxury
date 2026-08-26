@@ -1,25 +1,8 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
 import { useConfiguratorStore } from '../../../lib/stores/configurator';
 import { useToastStore } from '../../../components/ui/Toast';
-import type { Scene3DProps } from '@booxury/three';
-
-const Scene3D = dynamic(
-  () => import('@booxury/three').then((m) => m.Scene3D),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="aspect-[4/3] bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-brand-700 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-          <p className="text-xs text-gray-500">Memuat 3D preview...</p>
-        </div>
-      </div>
-    ),
-  }
-) as React.ComponentType<Scene3DProps>;
 
 const COVER_LABELS: Record<string, string> = {
   doff: 'Laminasi Doff', glossy: 'Laminasi Glossy',
@@ -135,30 +118,51 @@ export default function ReviewPage() {
             {base.size} · {base.pages} hal · {COVER_LABELS[finish.coverFinish] ?? finish.coverFinish}
           </span>
         </div>
-        <div className="relative" style={{ height: 380 }}>
-          <Scene3D
-            mode="orbit"
-            sizeCode={base.size}
-            spineWidthMm={priceData?.spine_width_mm ?? 12}
-            coverFinish={finish.coverFinish}
-            cornerShape={finish.cornerShape}
-            edgeFinish={finish.edgeFinish}
-            hasDustJacket={finish.hasDustJacket}
-            headbandCode={finish.headbandCode}
-            ribbonCodes={finish.ribbonCodes ?? []}
-            coverTextureUrl={coverTextureUrl ?? undefined}
-            coverOpenAngle={0}
-            layout={base.layout}
-            paperCode={base.paperCode}
-            endpaperCode={base.endpaperCode}
-            autoRotate={false}
-            autoRotateSpeed={0.3}
-            phase="review"
-            dpr={[1, 1.5]}
-            bloomIntensity={0.2}
-          />
+        {/* 3D Book Preview — rendered in sidebar (WizardLayout). This area shows
+            the configured specs as a visual reference card. */}
+        <div className="relative bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100 rounded-xl overflow-hidden flex items-center justify-center" style={{ height: 380 }}>
+          {/* Book SVG illustration matching configured finish */}
+          <div className="text-center space-y-3">
+            <svg
+              viewBox="0 0 140 180"
+              width={160}
+              height={200}
+              className="drop-shadow-2xl mx-auto"
+              aria-hidden="true"
+            >
+              {/* Shadow */}
+              <ellipse cx="70" cy="175" rx="50" ry="6" fill="rgba(0,0,0,0.12)" />
+              {/* Back cover */}
+              <rect x="20" y="15" width="100" height="150" rx="5" fill={finish.coverFinish === 'leatherette' ? '#8B4513' : finish.coverFinish === 'canvas' ? '#C4A882' : '#5C3317'} />
+              {/* Spine */}
+              <rect x="62" y="15" width="16" height="150" fill={finish.coverFinish === 'leatherette' ? '#7A3D12' : finish.coverFinish === 'canvas' ? '#B0906A' : '#4A2810'} />
+              {/* Spine text */}
+              <text x="70" y="95" textAnchor="middle" fill="#C4A35A" fontSize="9" fontFamily="serif" fontWeight="bold">BOOXURY</text>
+              {/* Front cover highlight */}
+              <rect x="22" y="17" width="96" height="146" rx="4" fill={finish.coverFinish === 'glossy' ? '#6B3D1E' : '#5C3317'} opacity="0.7" />
+              {/* Gold foil title area */}
+              <rect x="32" y="50" width="76" height="60" rx="2" fill="none" stroke="#D4AF37" strokeWidth="0.8" opacity="0.5" />
+              <text x="70" y="85" textAnchor="middle" fill="#D4AF37" fontSize="14" fontFamily="serif" fontWeight="bold">B</text>
+              {/* Corner decoration */}
+              <rect x="32" y="30" width="12" height="12" rx="1" fill="none" stroke="#D4AF37" strokeWidth="0.6" opacity="0.4" />
+              <rect x="96" y="30" width="12" height="12" rx="1" fill="none" stroke="#D4AF37" strokeWidth="0.6" opacity="0.4" />
+              <rect x="32" y="138" width="12" height="12" rx="1" fill="none" stroke="#D4AF37" strokeWidth="0.6" opacity="0.4" />
+              <rect x="96" y="138" width="12" height="12" rx="1" fill="none" stroke="#D4AF37" strokeWidth="0.6" opacity="0.4" />
+              {/* Edge sheen for gilded */}
+              {finish.edgeFinish !== 'plain' && (
+                <rect x="20" y="15" width="4" height="150" fill="#D4AF37" opacity="0.3" />
+              )}
+              {/* Ribbon */}
+              {(finish.ribbonCodes ?? []).length > 0 && (
+                <rect x="100" y="40" width="6" height="90" rx="2" fill={finish.ribbonCodes[0] === 'rb_merah' ? '#B71C1C' : finish.ribbonCodes[0] === 'rb_biru' ? '#1565C0' : '#D4AF37'} opacity="0.85" />
+              )}
+            </svg>
+            <p className="text-xs text-amber-700 font-medium">
+              Model 3D tersedia di panel kiri — drag untuk melihat dari berbagai sudut
+            </p>
+          </div>
           <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/45 backdrop-blur-sm rounded text-[10px] text-white/90">
-            Drag untuk rotasi
+            Lihat 3D interaktif di panel kiri
           </div>
         </div>
       </div>
