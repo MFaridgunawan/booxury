@@ -11,44 +11,53 @@ const LandingCanvas = dynamic(
   }
 );
 
-// Singleton state — prevents 2 R3F Canvas instances from mounting simultaneously
-// (which causes WebGL context crash: "Cannot read properties of null (reading 'alpha')")
-let _canvasActive = false;
-let _canvasQueue: Array<() => void> = [];
-function reserveCanvasSlot(): Promise<boolean> {
+// Module-level singleton: tracks which mode currently owns the active Canvas slot.
+// Only ONE R3F Canvas can be mounted at a time to avoid WebGL context crashes.
+type Mode = 'hero' | 'scroll-section';
+type Waiter = { mode: Mode; resolve: (granted: boolean) => void };
+let _activeMode: Mode | null = null;
+const _waiters: Waiter[] = [];
+
+function requestSlot(mode: Mode): Promise<boolean> {
   return new Promise((resolve) => {
-    if (!_canvasActive) {
-      _canvasActive = true;
+    if (_activeMode === null) {
+      _activeMode = mode;
+      resolve(true);
+    } else if (_activeMode === mode) {
       resolve(true);
     } else {
-      _canvasQueue.push(() => resolve(true));
-      // Timeout fallback — release slot after 30s if queue stalls
+      _waiters.push({ mode, resolve });
       setTimeout(() => {
-        const idx = _canvasQueue.indexOf(() => resolve(true));
+        const idx = _waiters.findIndex(w => w.resolve === resolve);
         if (idx >= 0) {
-          _canvasQueue.splice(idx, 1);
-          resolve(true);
+          _waiters.splice(idx, 1);
+          resolve(false);
         }
-      }, 30_000);
+      }, 60_000);
     }
   });
 }
-function releaseCanvasSlot() {
-  const next = _canvasQueue.shift();
-  if (next) {
-    // Let next requester go on next tick
-    setTimeout(next, 50);
+
+function releaseSlot(mode: Mode) {
+  if (_activeMode !== mode) return;
+  // Hero gets priority — if hero waiting, give it back
+  const heroIdx = _waiters.findIndex(w => w.mode === 'hero');
+  const scrollIdx = _waiters.findIndex(w => w.mode === 'scroll-section');
+  const nextIdx = heroIdx >= 0 ? heroIdx : scrollIdx;
+  if (nextIdx >= 0) {
+    const next = _waiters.splice(nextIdx, 1)[0];
+    _activeMode = next.mode;
+    setTimeout(() => next.resolve(true), 50);
   } else {
-    _canvasActive = false;
+    _activeMode = null;
   }
 }
 
-function LandingCanvasInner({ mode = 'hero' }: { mode?: 'hero' | 'scroll-section' }) {
+function LandingCanvasInner({ mode = 'hero', visible }: { mode?: 'hero' | 'scroll-section'; visible: boolean }) {
   const [showCanvas, setShowCanvas] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [isReady, setIsReady] = useState(false);
   const canvasMountRef = useRef<HTMLDivElement>(null);
-  const slotReleased = useRef(false);
+  const hasSlot = useRef(false);
 
   // Detect reduced motion preference
   useEffect(() => {
@@ -59,55 +68,33 @@ function LandingCanvasInner({ mode = 'hero' }: { mode?: 'hero' | 'scroll-section
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  // Reserve slot + mount 3D canvas after LCP + idle
+  // Reserve slot + mount 3D canvas after LCP + idle — only when visible
   useEffect(() => {
-    if (reducedMotion) return;
+    if (reducedMotion || !visible) return;
 
     let active = true;
     let rafId: number;
-    let cleanup: (() => void) | undefined;
+    let mountTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function mountCanvas() {
-      const granted = await reserveCanvasSlot();
+      const granted = await requestSlot(mode);
       if (!granted || !active) return;
+      hasSlot.current = true;
 
-      // Stagger mount: hero gets priority (immediate), scroll-section waits for hero to settle
-      const delay = mode === 'scroll-section' ? 2000 : 0;
+      const showAfterMount = () => {
+        if (!active) return;
+        setShowCanvas(true);
+        rafId = requestAnimationFrame(() => {
+          if (canvasMountRef.current) {
+            canvasMountRef.current.style.opacity = '1';
+          }
+        });
+      };
 
       if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        const idleId = window.requestIdleCallback(
-          () => {
-            const timerId = setTimeout(() => {
-              if (active) {
-                setShowCanvas(true);
-                setIsReady(true);
-                rafId = requestAnimationFrame(() => {
-                  if (canvasMountRef.current) {
-                    canvasMountRef.current.style.opacity = '1';
-                  }
-                });
-              }
-            }, delay);
-            cleanup = () => clearTimeout(timerId);
-          },
-          { timeout: 1500 }
-        );
-        cleanup = cleanup
-          ? () => { window.cancelIdleCallback(idleId); cleanup!(); }
-          : () => window.cancelIdleCallback(idleId);
+        window.requestIdleCallback(showAfterMount, { timeout: 1500 });
       } else {
-        const timerId = setTimeout(() => {
-          if (active) {
-            setShowCanvas(true);
-            setIsReady(true);
-            rafId = requestAnimationFrame(() => {
-              if (canvasMountRef.current) {
-                canvasMountRef.current.style.opacity = '1';
-              }
-            });
-          }
-        }, 300 + delay);
-        cleanup = () => clearTimeout(timerId);
+        mountTimer = setTimeout(showAfterMount, 600);
       }
     }
 
@@ -116,15 +103,16 @@ function LandingCanvasInner({ mode = 'hero' }: { mode?: 'hero' | 'scroll-section
     return () => {
       active = false;
       if (rafId) cancelAnimationFrame(rafId);
-      cleanup?.();
-      if (!slotReleased.current && isReady) {
-        slotReleased.current = true;
-        releaseCanvasSlot();
+      if (mountTimer) clearTimeout(mountTimer);
+      if (hasSlot.current) {
+        hasSlot.current = false;
+        releaseSlot(mode);
+        setShowCanvas(false);
       }
     };
-  }, [reducedMotion, mode, isReady]);
+  }, [reducedMotion, mode, visible]);
 
-  if (reducedMotion || !showCanvas) {
+  if (reducedMotion || !visible || !showCanvas) {
     return <StaticFallback />;
   }
 
@@ -139,6 +127,35 @@ function LandingCanvasInner({ mode = 'hero' }: { mode?: 'hero' | 'scroll-section
   );
 }
 
-export default function LandingCanvasWrapper({ mode = 'hero' }: { mode?: 'hero' | 'scroll-section' }) {
-  return <LandingCanvasInner mode={mode} />;
+/**
+ * Public wrapper with IntersectionObserver. Only mounts the 3D canvas when
+ * its container is visible in viewport, and unmounts when scrolled away.
+ * This prevents the 2-canvas crash AND saves GPU when not on screen.
+ */
+function LandingCanvasWrapper({ mode = 'hero' }: { mode?: 'hero' | 'scroll-section' }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(mode === 'hero'); // Hero is visible by default
+
+  useEffect(() => {
+    if (!ref.current || mode === 'hero') return;
+
+    // Only observe for scroll-section
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const isVisible = entries[0]?.isIntersecting ?? false;
+        setVisible(isVisible);
+      },
+      { threshold: 0.15 } // Mount when 15% visible
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [mode]);
+
+  return (
+    <div ref={ref} className="w-full h-full">
+      <LandingCanvasInner mode={mode} visible={visible} />
+    </div>
+  );
 }
+
+export default LandingCanvasWrapper;

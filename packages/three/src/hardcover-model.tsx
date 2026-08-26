@@ -213,17 +213,49 @@ export function HardcoverModel({
   const pageH = Math.max(0.1, h - squareOverhang * 2);
   const pageT = Math.max(0.02, spineW - 0.004);
 
-  // Positions
-  const frontCoverZ = spineW / 2 + boardT / 2;
-  const backCoverZ = -spineW / 2 - boardT / 2;
+  // Position constants
   const spineX = -w / 2 + boardT / 2;
-  const pageX = squareOverhang / 2;
 
   return (
     <group ref={groupRef} position={[0, 0, 0]}>
-      {/* ── Front Cover Board (+Z) — Hinged at Spine ───────── */}
-      <group position={[-w / 2, 0, frontCoverZ]}>
-        <group rotation={[0, -coverOpenAngle, 0]} position={[w / 2, 0, 0]}>
+      {/* ── Back Cover Board — hinged at spine, opens to the LEFT ───────────── */}
+      <group position={[spineX, 0, 0]} rotation={[0, coverOpenAngle, 0]}>
+        <group position={[-w / 2, 0, 0]}>
+          <RoundedBox
+            args={[w, h, boardT]}
+            radius={radius}
+            smoothness={4}
+            castShadow
+            receiveShadow
+          >
+            <meshStandardMaterial {...finishParams} />
+          </RoundedBox>
+          {/* Inside back endpaper (visible when book is open) */}
+          <mesh position={[0, 0, boardT / 2 + 0.0005]}>
+            <planeGeometry args={[w * 0.96, h * 0.96]} />
+            <meshStandardMaterial color={endpaperColor} roughness={0.92} metalness={0.0} />
+          </mesh>
+        </group>
+      </group>
+
+      {/* ── Page Block — fans open, hinged at spine ─────────────────────────── */}
+      <BookPages
+        pageW={pageW}
+        pageH={pageH}
+        pageT={pageT}
+        spineW={spineW}
+        totalSheets={12}
+        coverOpenAngle={coverOpenAngle}
+        pageTexture={pageTexture}
+        pagePaperColor={pagePaperColor}
+        endpaperColor={endpaperColor}
+        spineX={spineX}
+        edgeParams={edgeParams}
+      />
+
+      {/* ── Front Cover Board — hinged at spine, opens to the RIGHT ──────────── */}
+      <group position={[spineX, 0, 0]} rotation={[0, -coverOpenAngle, 0]}>
+        <group position={[w / 2, 0, 0]}>
           <RoundedBox
             args={[w, h, boardT]}
             radius={radius}
@@ -247,98 +279,46 @@ export function HardcoverModel({
             </mesh>
           )}
 
-          {/* Inside Endpaper Pastedown (Visible when cover is open) */}
-          <mesh position={[0, 0, -boardT / 2 - 0.0005]} rotation={[0, Math.PI, 0]}>
+          {/* Inside front endpaper (visible when book is open) */}
+          <mesh position={[0, 0, -boardT / 2 - 0.0005]}>
             <planeGeometry args={[w * 0.96, h * 0.96]} />
-            <meshStandardMaterial
-              color={endpaperColor}
-              roughness={0.92}
-              metalness={0.0}
-            />
-          </mesh>
-
-          {/* French Groove / Joint Hinge Indentation */}
-          <mesh position={[-w / 2 + 0.035, 0, boardT / 2 + 0.001]}>
-            <planeGeometry args={[0.006, h]} />
-            <meshBasicMaterial color="#000000" transparent opacity={0.18} />
+            <meshStandardMaterial color={endpaperColor} roughness={0.92} metalness={0.0} />
           </mesh>
         </group>
       </group>
 
-      {/* ── Back Cover Board (-Z) ─────────────────────── */}
-      <group position={[0, 0, backCoverZ]}>
-        <RoundedBox
-          args={[w, h, boardT]}
-          radius={radius}
-          smoothness={4}
-          castShadow
-          receiveShadow
-        >
-          <meshStandardMaterial {...finishParams} />
-        </RoundedBox>
+      {/* ── Spine (Left Edge: -X) — static at center, between both covers ── */}
+      <mesh position={[spineX, 0, 0]} castShadow receiveShadow>
+        <boxGeometry args={[boardT, h, spineW]} />
+        <meshStandardMaterial {...finishParams} />
+      </mesh>
 
-        {/* French Groove / Joint Hinge Indentation */}
-        <mesh position={[-w / 2 + 0.035, 0, -boardT / 2 - 0.0005]} rotation={[0, Math.PI, 0]}>
-          <planeGeometry args={[0.006, h]} />
-          <meshBasicMaterial color="#000000" transparent opacity={0.18} />
-        </mesh>
-      </group>
-
-      {/* ── Spine (Left Edge: -X) ─────────────────────── */}
-      <group position={[spineX, 0, 0]}>
-        <RoundedBox
-          args={[boardT, h, spineW + boardT * 2]}
-          radius={Math.min(radius, 0.02)}
-          smoothness={4}
-          castShadow
-          receiveShadow
-        >
-          <meshStandardMaterial {...finishParams} />
-        </RoundedBox>
-      </group>
-
-      {/* ── Page Block — Individual sheets that fan open with cover ── */}
-      <BookPages
-        pageW={pageW}
-        pageH={pageH}
-        pageT={pageT}
-        spineW={spineW}
-        totalSheets={12}
-        coverOpenAngle={coverOpenAngle}
-        pageTexture={pageTexture}
-        pagePaperColor={pagePaperColor}
-        endpaperColor={endpaperColor}
-        squareOverhang={squareOverhang}
-        edgeParams={edgeParams}
-      />
-
-      {/* ── Headband (Top of spine opening) ───────────── */}
+      {/* ── Headband (Top of spine) — visible when book is open ─── */}
       {headbandColor && (
-        <mesh position={[spineX + boardT * 0.6, pageH / 2 + 0.004, 0]} castShadow>
-          <boxGeometry args={[boardT * 0.8, 0.008, pageT * 0.95]} />
+        <mesh position={[spineX, pageH / 2 + 0.004, 0]} castShadow>
+          <boxGeometry args={[boardT * 1.2, 0.008, pageT * 0.85]} />
           <meshStandardMaterial color={headbandColor} roughness={0.7} metalness={0.1} />
         </mesh>
       )}
 
-      {/* ── Tailband (Bottom of spine opening) ────────── */}
+      {/* ── Tailband (Bottom of spine) ────────── */}
       {headbandColor && (
-        <mesh position={[spineX + boardT * 0.6, -pageH / 2 - 0.004, 0]} castShadow>
-          <boxGeometry args={[boardT * 0.8, 0.008, pageT * 0.95]} />
+        <mesh position={[spineX, -pageH / 2 - 0.004, 0]} castShadow>
+          <boxGeometry args={[boardT * 1.2, 0.008, pageT * 0.85]} />
           <meshStandardMaterial color={headbandColor} roughness={0.7} metalness={0.1} />
         </mesh>
       )}
 
-      {/* ── Ribbon Marker(s) ──────────────────────────── */}
+      {/* ── Ribbon Marker(s) — attached to spine, hang out from top of pages ── */}
       {ribbonCodes.slice(0, 2).map((code, i) => {
         const color = RIBBON_COLORS[code] ?? '#b71c1c';
-        const xOffset = spineX + 0.02 + i * 0.02;
-        const zOffset = frontCoverZ - 0.01 - i * 0.01;
+        const zOffset = 0.01 + i * 0.02;
         const yTop = pageH / 2 + 0.008;
         return (
           <RibbonMarker
             key={`${code}-${i}`}
             color={color}
-            startX={xOffset}
+            startX={spineX + 0.005}
             startY={yTop}
             startZ={zOffset}
             bookHeight={h}
@@ -361,7 +341,11 @@ export function HardcoverModel({
   );
 }
 
-// Individual page sheets that fan open when cover opens — "buka buku" effect
+// Individual page sheets that fan open when cover opens.
+// Architecture: each page is hinged at the spine (X = spineX).
+// - Page i=0 glued to back cover, rotates with back cover (+openAngle = opens LEFT)
+// - Page i=last glued to front cover, rotates with front cover (-openAngle = opens RIGHT)
+// - Middle pages fan out progressively, forming a smooth dome/arch shape
 function BookPages({
   pageW,
   pageH,
@@ -372,7 +356,7 @@ function BookPages({
   pageTexture,
   pagePaperColor,
   endpaperColor,
-  squareOverhang,
+  spineX,
   edgeParams,
 }: {
   pageW: number;
@@ -384,80 +368,63 @@ function BookPages({
   pageTexture: THREE.CanvasTexture | THREE.Texture | null;
   pagePaperColor: string;
   endpaperColor: string;
-  squareOverhang: number;
+  spineX: number;
   edgeParams: MeshStandardMaterialParameters;
 }) {
-  // When cover is closed (angle=0): pages form a tight block
-  // When cover opens: each page fans outward proportional to its position
-  // Page i (0=near spine, totalSheets-1=near front cover) rotates by:
-  //   rotationY = -(i / (totalSheets - 1)) * coverOpenAngle
-  // This makes pages sweep open like a real book
-  const openAngle = Math.min(coverOpenAngle, Math.PI * 0.9); // cap at ~162°
+  // Cap at ~162° (90% of pi) to keep pages from clipping with covers
+  const openAngle = Math.min(coverOpenAngle, Math.PI * 0.9);
 
   return (
     <group>
       {Array.from({ length: totalSheets }).map((_, i) => {
-        // Position page i along the spine-to-front axis (Z: -spineW/2 to +spineW/2)
-        // Spread pages evenly across the page block depth
-        const t = totalSheets <= 1 ? 0 : i / (totalSheets - 1);
-        const pageZ = -spineW / 2 + t * spineW;
+        // t = 0 → page glued to BACK cover (opens LEFT, +rotationY)
+        // t = 1 → page glued to FRONT cover (opens RIGHT, -rotationY)
+        // t = 0.5 → page near spine, doesn't move much
+        const t = totalSheets <= 1 ? 0.5 : i / (totalSheets - 1);
 
-        // Rotation: pages near the spine rotate less, pages near the front rotate more
-        // Negative because rotation away from viewer (cover opens toward viewer)
-        const rotationY = -t * openAngle;
+        // Linear fan: pages spread smoothly from -openAngle (front side)
+        //             through 0 (middle, near spine) to +openAngle (back side)
+        const rotationY = (0.5 - t) * 2 * openAngle;
 
         // Each page slightly thinner than total page block
-        const sheetThickness = pageT / totalSheets * 0.85;
-        const pageX = squareOverhang / 2;
+        const sheetThickness = (pageT / totalSheets) * 0.95;
 
+        // Page sits at spine, extends to the RIGHT (positive X)
+        // When it rotates, it pivots cleanly around the spine
         return (
           <group
             key={i}
-            position={[pageX, 0, pageZ]}
+            position={[spineX, 0, 0]}
             rotation={[0, rotationY, 0]}
           >
-            {/* Page sheet body — thin box showing edge color (page thickness) */}
-            <mesh castShadow receiveShadow>
-              <boxGeometry args={[pageW, pageH, sheetThickness]} />
-              <meshStandardMaterial
-                {...edgeParams}
-              />
-            </mesh>
-
-            {/* Top surface of page — shows layout (lined/plain) */}
-            <mesh position={[0, 0, sheetThickness / 2 + 0.0004]}>
-              <planeGeometry args={[pageW * 0.99, pageH * 0.98]} />
-              <meshStandardMaterial
-                map={pageTexture ?? undefined}
-                color={pagePaperColor}
-                roughness={0.96}
-                metalness={0.0}
-              />
-            </mesh>
-
-            {/* Bottom surface — ivory tone */}
-            <mesh position={[0, 0, -(sheetThickness / 2 + 0.0004)]} rotation={[0, Math.PI, 0]}>
-              <planeGeometry args={[pageW * 0.99, pageH * 0.98]} />
-              <meshStandardMaterial
-                color={pagePaperColor}
-                roughness={0.97}
-                metalness={0.0}
-              />
-            </mesh>
-
-            {/* First/last page shows endpaper on the outside */}
-            {i === 0 && (
-              <mesh position={[0, 0, -(sheetThickness / 2 + 0.001)]} rotation={[0, Math.PI, 0]}>
-                <planeGeometry args={[pageW * 0.97, pageH * 0.97]} />
-                <meshStandardMaterial color={endpaperColor} roughness={0.92} metalness={0.0} />
+            <group position={[pageW / 2, 0, 0]}>
+              {/* Page sheet body — thin box showing edge color */}
+              <mesh castShadow receiveShadow>
+                <boxGeometry args={[pageW, pageH, sheetThickness]} />
+                <meshStandardMaterial {...edgeParams} />
               </mesh>
-            )}
-            {i === totalSheets - 1 && (
-              <mesh position={[0, 0, sheetThickness / 2 + 0.001]}>
-                <planeGeometry args={[pageW * 0.97, pageH * 0.97]} />
-                <meshStandardMaterial color={endpaperColor} roughness={0.92} metalness={0.0} />
+
+              {/* Top surface of page — shows layout (lined/plain) */}
+              <mesh position={[0, 0, sheetThickness / 2 + 0.0004]}>
+                <planeGeometry args={[pageW * 0.99, pageH * 0.98]} />
+                <meshStandardMaterial
+                  map={pageTexture ?? undefined}
+                  color={pagePaperColor}
+                  roughness={0.96}
+                  metalness={0.0}
+                />
               </mesh>
-            )}
+
+              {/* Bottom surface — same paper color */}
+              <mesh position={[0, 0, -(sheetThickness / 2 + 0.0004)]} rotation={[0, Math.PI, 0]}>
+                <planeGeometry args={[pageW * 0.99, pageH * 0.98]} />
+                <meshStandardMaterial
+                  color={pagePaperColor}
+                  roughness={0.97}
+                  metalness={0.0}
+                />
+              </mesh>
+            </group>
           </group>
         );
       })}

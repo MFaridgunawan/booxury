@@ -1,132 +1,166 @@
 'use client';
-import { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import gsap from 'gsap';
 
-// Camera positions per wizard phase
-export const CAMERA_POSITIONS: Record<string, { position: [number, number, number]; target: [number, number, number] }> = {
-  base:   { position: [0, 0, 3.5], target: [0, 0, 0] },
-  cover:  { position: [1.2, 0.3, 2.8], target: [0.3, 0, 0] },
-  finish: { position: [0.5, 0.8, 2.5], target: [0, 0, 0] },
-  review: { position: [0, 0.2, 3.0], target: [0, 0, 0] },
+type OrbitControlsRef = React.ComponentRef<typeof OrbitControls>;
+
+// Camera presets for Game-like character customization flow (Zoomed out for spacious framing)
+export const CAMERA_POSITIONS: Record<
+  string,
+  { position: [number, number, number]; target: [number, number, number]; fov?: number }
+> = {
+  base:   { position: [0.85, 0.5, 4.3], target: [0, 0, 0], fov: 34 },
+  inside: { position: [0.5, 0.5, 4.5], target: [0, 0.05, 0], fov: 36 },
+  cover:  { position: [0, 0, 3.6], target: [0, 0, 0], fov: 34 },
+  finish: { position: [-1.35, 0.55, 3.2], target: [-0.25, 0.05, 0], fov: 34 },
+  spine:  { position: [-2.1, 0.0, 2.7], target: [-0.45, 0, 0], fov: 32 },
+  edges:  { position: [1.6, -0.45, 2.9], target: [0.35, -0.1, 0], fov: 32 },
+  ribbon: { position: [0.3, -1.2, 2.9], target: [0, -0.35, 0], fov: 32 },
+  review: { position: [0.95, 0.45, 4.0], target: [0, 0, 0], fov: 34 },
 };
 
-// Orbit controls for interactive wizard preview
-export function OrbitRig() {
-  return (
-    <>
-      <PerspectiveCamera makeDefault position={[0, 0, 3.5]} fov={30} />
-      <OrbitControls
-        enablePan={false}
-        minDistance={1.5}
-        maxDistance={5}
-        minPolarAngle={Math.PI / 6}
-        maxPolarAngle={Math.PI / 1.5}
-        dampingFactor={0.08}
-        enableDamping
-      />
-    </>
-  );
-}
-
-// Cinematic rig — GSAP-tweened camera with dolly/zoom, no user control
-export function CinematicRig({
-  phase,
-  onComplete,
+// ── Cinematic Orbit Rig (Game-like Camera Transition with Free Orbit) ────────
+export function CinematicOrbitRig({
+  phase = 'base',
+  autoRotate = false,
+  autoRotateSpeed = 0.4,
 }: {
-  phase: string;
-  onComplete?: () => void;
+  phase?: string;
+  autoRotate?: boolean;
+  autoRotateSpeed?: number;
 }) {
   const { camera } = useThree();
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-  const targetRef = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
-  const tweenRef = useRef<gsap.core.Tween | null>(null);
+  const controlsRef = useRef<OrbitControlsRef>(null);
 
+  const targetPos = useRef<THREE.Vector3>(new THREE.Vector3(0.85, 0.5, 4.3));
+  const targetLookAt = useRef<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
+  const isTransitioning = useRef(true);
+  const transitionProgress = useRef(0);
+
+  // When phase changes, trigger a smooth game-like camera glide
   useEffect(() => {
     const config = CAMERA_POSITIONS[phase] ?? CAMERA_POSITIONS.base;
-    const targetPos = new THREE.Vector3(...config.position);
-    const targetLookAt = new THREE.Vector3(...config.target);
+    targetPos.current.set(config.position[0], config.position[1], config.position[2]);
+    targetLookAt.current.set(config.target[0], config.target[1], config.target[2]);
+    isTransitioning.current = true;
+    transitionProgress.current = 0;
+  }, [phase]);
 
-    // Kill any existing tween
-    tweenRef.current?.kill();
+  useFrame((_, delta) => {
+    if (isTransitioning.current) {
+      transitionProgress.current += delta * 2.2; // ~0.8s transition
+      const t = Math.min(1, transitionProgress.current);
+      // Smooth cubic ease out
+      const ease = 1 - Math.pow(1 - t, 3);
 
-    // Tween camera position
-    tweenRef.current = gsap.to(camera.position, {
-      x: targetPos.x,
-      y: targetPos.y,
-      z: targetPos.z,
-      duration: 1.2,
-      ease: 'power2.inOut',
-      onComplete: () => onComplete?.(),
-    });
+      camera.position.lerp(targetPos.current, ease * 0.15);
+      if (controlsRef.current) {
+        controlsRef.current.target.lerp(targetLookAt.current, ease * 0.15);
+        controlsRef.current.update();
+      }
 
-    // Tween look-at target
-    gsap.to(targetRef.current, {
-      x: targetLookAt.x,
-      y: targetLookAt.y,
-      z: targetLookAt.z,
-      duration: 1.2,
-      ease: 'power2.inOut',
-    });
-
-    return () => {
-      tweenRef.current?.kill();
-    };
-  }, [phase, camera]);
-
-  // Apply look-at every frame
-  useFrame(() => {
-    camera.lookAt(targetRef.current);
+      if (t >= 1 && camera.position.distanceTo(targetPos.current) < 0.02) {
+        isTransitioning.current = false;
+      }
+    }
   });
 
   return (
-    <PerspectiveCamera
-      ref={cameraRef}
-      makeDefault
-      position={[0, 0, 3.5]}
-      fov={30}
+    <OrbitControls
+      ref={controlsRef}
+      enablePan={false}
+      minDistance={2.0}
+      maxDistance={6.5}
+      minPolarAngle={Math.PI / 8}
+      maxPolarAngle={Math.PI / 1.4}
+      dampingFactor={0.06}
+      enableDamping
+      autoRotate={autoRotate || phase === 'review'}
+      autoRotateSpeed={autoRotateSpeed}
+      onStart={() => {
+        // User manually interacted: stop automatic transition
+        isTransitioning.current = false;
+      }}
     />
   );
 }
 
-// Phase transition hook — returns a function to trigger cinematic transition
-export function useCinematicTransition() {
+// ── Legacy Orbit Rig ────────────────────────────────────────────────────────
+export function OrbitRig({ autoRotate = false, autoRotateSpeed = 0.4 }: { autoRotate?: boolean; autoRotateSpeed?: number }) {
+  return <CinematicOrbitRig phase="base" autoRotate={autoRotate} autoRotateSpeed={autoRotateSpeed} />;
+}
+
+// ── Pure Cinematic Rig (Non-interactive) ────────────────────────────────────
+export function CinematicRig({ phase = 'base' }: { phase?: string }) {
+  return <CinematicOrbitRig phase={phase} />;
+}
+
+// ── Landing Page Scroll-Driven 3D Rig ───────────────────────────────────────
+export function LandingScrollRig({
+  onScrollProgress,
+}: {
+  onScrollProgress?: (progress: { scrollY: number; openAngle: number }) => void;
+}) {
   const { camera } = useThree();
-  const targetRef = useRef(new THREE.Vector3(0, 0, 0));
-  const ctxRef = useRef<gsap.Context | null>(null);
+  const [scrollProgress, setScrollProgress] = useState(0);
 
-  const transition = (toPhase: string, duration = 1.0) => {
-    const config = CAMERA_POSITIONS[toPhase] ?? CAMERA_POSITIONS.base;
-    const targetPos = new THREE.Vector3(...config.position);
-    const targetLookAt = new THREE.Vector3(...config.target);
+  useEffect(() => {
+    const handleScroll = () => {
+      const total = document.documentElement.scrollHeight - window.innerHeight;
+      const current = Math.max(0, Math.min(1, total > 0 ? window.scrollY / total : 0));
+      setScrollProgress(current);
+    };
 
-    ctxRef.current?.revert();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
-    ctxRef.current = gsap.context(() => {
-      gsap.to(camera.position, {
-        x: targetPos.x,
-        y: targetPos.y,
-        z: targetPos.z,
-        duration,
-        ease: 'power2.inOut',
-      });
-      gsap.to(targetRef.current, {
-        x: targetLookAt.x,
-        y: targetLookAt.y,
-        z: targetLookAt.z,
-        duration,
-        ease: 'power2.inOut',
-      });
-    });
+  useFrame((state) => {
+    const p = scrollProgress; // 0.0 (top) -> 1.0 (bottom)
+    const time = state.clock.elapsedTime;
 
-    return () => ctxRef.current?.revert();
-  };
+    // Idle breathing float
+    const floatY = Math.sin(time * 1.2) * 0.04;
+    const floatRotX = Math.cos(time * 0.9) * 0.03;
 
-  useFrame(() => {
-    camera.lookAt(targetRef.current);
+    // Dynamic camera and book staging based on scroll progress:
+    // Scroll 0.0 - 0.25 (Hero section): Center stage, subtle angle
+    // Scroll 0.25 - 0.70 (Features section): Rotating to show spine, edges, and gold foil
+    // Scroll 0.70 - 1.00 (CTA section): Turnaround & beauty pose
+    const targetCamX = THREE.MathUtils.lerp(0, 0.4, p);
+    const targetCamY = THREE.MathUtils.lerp(0.1, -0.1, p) + floatY;
+    const targetCamZ = THREE.MathUtils.lerp(2.8, 3.2, p);
+
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetCamX, 0.08);
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetCamY, 0.08);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCamZ, 0.08);
+    camera.lookAt(0, 0, 0);
+
+    // Calculate dynamic cover open angle on scroll (opens gently around 40-70% scroll)
+    let openAngle = 0;
+    if (p > 0.25 && p < 0.75) {
+      const openT = (p - 0.25) / 0.5;
+      openAngle = Math.sin(openT * Math.PI) * 0.45; // up to ~25 degrees open
+    }
+
+    if (onScrollProgress) {
+      onScrollProgress({ scrollY: p, openAngle });
+    }
   });
 
+  return null;
+}
+
+// ── Cinematic Transition Hook ───────────────────────────────────────────────
+export function useCinematicTransition() {
+  const { camera } = useThree();
+  const transition = (toPhase: string) => {
+    const config = CAMERA_POSITIONS[toPhase] ?? CAMERA_POSITIONS.base;
+    camera.position.set(...config.position);
+    camera.lookAt(...config.target);
+  };
   return { transition };
 }
