@@ -1,65 +1,49 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import type { MotionValue } from 'motion/react';
 import dynamic from 'next/dynamic';
-import { StaticFallback } from './landing-canvas';
+import { BookStaticFallback } from './book-static-fallback';
+
+const loadLandingCanvas = () => import('./landing-canvas').then((module) => module.LandingCanvas);
 
 const LandingCanvas = dynamic(
-  () => import('./landing-canvas').then((m) => m.LandingCanvas),
+  loadLandingCanvas,
   {
     ssr: false,
-    loading: () => <StaticFallback />,
+    loading: () => <BookStaticFallback />,
   }
 );
 
-// Module-level singleton: tracks which mode currently owns the active Canvas slot.
-// Only ONE R3F Canvas can be mounted at a time to avoid WebGL context crashes.
-type Mode = 'hero' | 'scroll-section';
-type Waiter = { mode: Mode; resolve: (granted: boolean) => void };
-let _activeMode: Mode | null = null;
-const _waiters: Waiter[] = [];
-
-function requestSlot(mode: Mode): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (_activeMode === null) {
-      _activeMode = mode;
-      resolve(true);
-    } else if (_activeMode === mode) {
-      resolve(true);
-    } else {
-      _waiters.push({ mode, resolve });
-      setTimeout(() => {
-        const idx = _waiters.findIndex(w => w.resolve === resolve);
-        if (idx >= 0) {
-          _waiters.splice(idx, 1);
-          resolve(false);
-        }
-      }, 60_000);
-    }
-  });
+interface LandingCanvasWrapperProps {
+  mode?: 'hero' | 'scroll-section';
+  scrollProgress?: MotionValue<number>;
+  priority?: 'default' | 'stage';
+  coverColor?: string;
 }
 
-function releaseSlot(mode: Mode) {
-  if (_activeMode !== mode) return;
-  // Hero gets priority — if hero waiting, give it back
-  const heroIdx = _waiters.findIndex(w => w.mode === 'hero');
-  const scrollIdx = _waiters.findIndex(w => w.mode === 'scroll-section');
-  const nextIdx = heroIdx >= 0 ? heroIdx : scrollIdx;
-  if (nextIdx >= 0) {
-    const next = _waiters.splice(nextIdx, 1)[0];
-    _activeMode = next.mode;
-    setTimeout(() => next.resolve(true), 50);
-  } else {
-    _activeMode = null;
-  }
+type CanvasMode = NonNullable<LandingCanvasWrapperProps['mode']>;
+let activeCanvasMode: CanvasMode | null = null;
+const slotListeners = new Set<() => void>();
+
+function claimCanvasSlot(mode: CanvasMode) {
+  if (activeCanvasMode && activeCanvasMode !== mode) return false;
+  activeCanvasMode = mode;
+  return true;
 }
 
-function LandingCanvasInner({ mode = 'hero', visible }: { mode?: 'hero' | 'scroll-section'; visible: boolean }) {
-  const [showCanvas, setShowCanvas] = useState(false);
+function releaseCanvasSlot(mode: CanvasMode) {
+  if (activeCanvasMode !== mode) return;
+  activeCanvasMode = null;
+  slotListeners.forEach((listener) => listener());
+}
+
+function LandingCanvasWrapper({ mode = 'hero', scrollProgress, priority = 'default', coverColor = '#f5f1e9' }: LandingCanvasWrapperProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const canvasMountRef = useRef<HTMLDivElement>(null);
-  const hasSlot = useRef(false);
+  const [hasCanvasSlot, setHasCanvasSlot] = useState(false);
+  const [canvasReady, setCanvasReady] = useState(false);
 
-  // Detect reduced motion preference
   useEffect(() => {
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
     setReducedMotion(mq.matches);
@@ -68,92 +52,88 @@ function LandingCanvasInner({ mode = 'hero', visible }: { mode?: 'hero' | 'scrol
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  // Reserve slot + mount 3D canvas after LCP + idle — only when visible
   useEffect(() => {
-    if (reducedMotion || !visible) return;
+    if (!containerRef.current) return;
 
-    let active = true;
-    let rafId: number;
-    let mountTimer: ReturnType<typeof setTimeout> | null = null;
-
-    async function mountCanvas() {
-      const granted = await requestSlot(mode);
-      if (!granted || !active) return;
-      hasSlot.current = true;
-
-      const showAfterMount = () => {
-        if (!active) return;
-        setShowCanvas(true);
-        rafId = requestAnimationFrame(() => {
-          if (canvasMountRef.current) {
-            canvasMountRef.current.style.opacity = '1';
-          }
-        });
-      };
-
-      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-        window.requestIdleCallback(showAfterMount, { timeout: 1500 });
-      } else {
-        mountTimer = setTimeout(showAfterMount, 600);
-      }
-    }
-
-    mountCanvas();
-
-    return () => {
-      active = false;
-      if (rafId) cancelAnimationFrame(rafId);
-      if (mountTimer) clearTimeout(mountTimer);
-      if (hasSlot.current) {
-        hasSlot.current = false;
-        releaseSlot(mode);
-        setShowCanvas(false);
-      }
-    };
-  }, [reducedMotion, mode, visible]);
-
-  if (reducedMotion || !visible || !showCanvas) {
-    return <StaticFallback />;
-  }
-
-  return (
-    <div
-      ref={canvasMountRef}
-      className="w-full h-full"
-      style={{ opacity: 0, transition: 'opacity 1.0s ease-out' }}
-    >
-      <LandingCanvas reducedMotion={reducedMotion} mode={mode} />
-    </div>
-  );
-}
-
-/**
- * Public wrapper with IntersectionObserver. Only mounts the 3D canvas when
- * its container is visible in viewport, and unmounts when scrolled away.
- * This prevents the 2-canvas crash AND saves GPU when not on screen.
- */
-function LandingCanvasWrapper({ mode = 'hero' }: { mode?: 'hero' | 'scroll-section' }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [visible, setVisible] = useState(mode === 'hero'); // Hero is visible by default
-
-  useEffect(() => {
-    if (!ref.current || mode === 'hero') return;
-
-    // Only observe for scroll-section
     const observer = new IntersectionObserver(
       (entries) => {
-        const isVisible = entries[0]?.isIntersecting ?? false;
-        setVisible(isVisible);
+        const isIntersecting = entries[0]?.isIntersecting ?? false;
+        setVisible(isIntersecting);
       },
-      { threshold: 0.15 } // Mount when 15% visible
+      { rootMargin: priority === 'stage' ? '240px 0px' : '160px 0px', threshold: 0.01 }
     );
-    observer.observe(ref.current);
+
+    observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, [mode]);
+  }, [priority]);
+
+  useEffect(() => {
+    if (priority !== 'stage' || !containerRef.current) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        void loadLandingCanvas();
+        observer.disconnect();
+      },
+      { rootMargin: '1200px 0px', threshold: 0.01 }
+    );
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [priority]);
+
+  useEffect(() => {
+    if (reducedMotion || !visible) {
+      setHasCanvasSlot(false);
+      return;
+    }
+
+    let ownsSlot = false;
+    const requestSlot = () => {
+      if (!claimCanvasSlot(mode)) return;
+      ownsSlot = true;
+      setHasCanvasSlot(true);
+    };
+
+    requestSlot();
+    slotListeners.add(requestSlot);
+
+    return () => {
+      slotListeners.delete(requestSlot);
+      if (ownsSlot) releaseCanvasSlot(mode);
+      setHasCanvasSlot(false);
+    };
+  }, [mode, reducedMotion, visible]);
+
+  useEffect(() => {
+    if (!hasCanvasSlot) {
+      setCanvasReady(false);
+      return;
+    }
+
+    if (priority === 'stage') {
+      setCanvasReady(true);
+      return;
+    }
+
+    const timer = window.setTimeout(() => setCanvasReady(true), 180);
+    return () => window.clearTimeout(timer);
+  }, [hasCanvasSlot, priority]);
+
+  if (reducedMotion) {
+    return <BookStaticFallback />;
+  }
+
+  const bgStyle = { background: 'linear-gradient(145deg, #f5f4f0 0%, #ebe8e1 100%)' };
 
   return (
-    <div ref={ref} className="w-full h-full">
-      <LandingCanvasInner mode={mode} visible={visible} />
+    <div ref={containerRef} className="w-full h-full relative" style={bgStyle}>
+      {visible && hasCanvasSlot && canvasReady ? (
+        <LandingCanvas reducedMotion={reducedMotion} mode={mode} scrollProgress={scrollProgress} coverColor={coverColor} />
+      ) : (
+        <BookStaticFallback />
+      )}
     </div>
   );
 }

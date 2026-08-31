@@ -1,5 +1,6 @@
-import { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { FastifyInstance } from '../../types.js';
+import { Prisma } from '@prisma/client';
 
 async function authGuard(fastify: FastifyInstance, request: Parameters<typeof fastify.authenticate>[0]) {
   try {
@@ -15,11 +16,17 @@ export async function cartRoutes(fastify: FastifyInstance) {
     preHandler: [async (req) => authGuard(fastify, req)],
   }, async (req, reply) => {
     const userId = (req.user as { id: string }).id;
-    let cart = await fastify.prisma.cart.findUnique({ where: { userId }, include: { items: { include: { design: { select: { id: true, name: true, thumbnailUrl: true, base: true } } } } } });
+    let cart = await (fastify.prisma.cart.findUnique({
+      where: { userId },
+      include: { items: { include: { design: { select: { id: true, name: true, thumbnailUrl: true, pages: true, layout: true } } } } },
+    } as any)) as any;
     if (!cart) {
-      cart = await fastify.prisma.cart.create({ where: { userId }, data: {}, include: { items: true } });
+      cart = await (fastify.prisma.cart.create({
+        data: { userId },
+        include: { items: true },
+      } as any)) as any;
     }
-    const total = cart.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
+    const total = cart.items.reduce((sum: number, item: any) => sum + Number(item.unitPrice) * item.quantity, 0);
     return { id: cart.id, items: cart.items, total };
   });
 
@@ -71,12 +78,13 @@ export async function cartRoutes(fastify: FastifyInstance) {
     const userId = (req.user as { id: string }).id;
     const { cart_id } = req.body as { cart_id: string };
 
-    const cart = await fastify.prisma.cart.findUnique({
+    const cart = await (fastify.prisma.cart.findUnique({
       where: { id: cart_id },
       include: { items: { include: { design: true } } },
-    });
+    } as any)) as any;
+
     if (!cart || cart.userId !== userId) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Cart not found' } });
-    if (cart.items.length === 0) return reply.status(422).send({ error: { code: 'VALIDATION_FAILED', message: 'Cart is empty' } });
+    if (!cart.items.length) return reply.status(422).send({ error: { code: 'VALIDATION_FAILED', message: 'Cart is empty' } });
 
     // Create order
     const orderNumber = `BX-${Date.now().toString(36).toUpperCase()}`;
@@ -86,14 +94,14 @@ export async function cartRoutes(fastify: FastifyInstance) {
         orderNumber,
         productionStatus: 'AWAITING_PAYMENT',
         items: {
-          create: cart.items.map(item => ({
+          create: cart.items.map((item: any) => ({
             designId: item.designId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
-            baseSnapshot: { size: item.design.sizePresetId, pages: item.design.pages, layout: item.design.layout },
+            baseSnapshot: { pages: item.design.pages, layout: item.design.layout },
             designSnapshot: item.design.designPayload,
-            finishSnapshot: item.design.finishConfig ?? {},
-            finishZonesSnapshot: item.design.finishZones,
+            finishSnapshot: item.design.finishConfig ?? Prisma.JsonNull,
+            finishZonesSnapshot: item.design.finishZones ?? Prisma.JsonNull,
             spineWidthMm: item.design.spineWidthMm,
           })),
         },
@@ -108,7 +116,8 @@ export async function cartRoutes(fastify: FastifyInstance) {
     // Clear cart
     await fastify.prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
 
-    return { order_id: order.id, order_number: orderNumber, total: cart.items.reduce((s, i) => s + Number(i.unitPrice) * i.quantity, 0) };
+    const total = cart.items.reduce((s: number, i: any) => s + Number(i.unitPrice) * i.quantity, 0);
+    return { order_id: order.id, order_number: orderNumber, total };
   });
 
   // Mock payment confirm

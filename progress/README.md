@@ -57,6 +57,7 @@ Sonnet stuck > 1 jam atau 2 attempt gagal → stop, dokumentasikan, escalate ke 
 | 5 | Jumat, 28 Agt 2026 | **3D Viewport CSS + Fase 4 + Cart** | Opus (3D design) + Sonnet (impl) |
 | 6 | Sabtu, 29 Agt 2026 | PDF Worker + Admin Dashboard | Sonnet |
 | 7 | Minggu, 30 Agt 2026 | Polish + Demo Prep | Opus + Sonnet |
+| 8 | Rabu, 26 Agt 2026 | **3D Customization Polish, Fullscreen Showcase, & Material Realism** | Antigravity |
 
 ## Sprint Summary (di-update EOD tiap hari)
 
@@ -64,12 +65,13 @@ Sonnet stuck > 1 jam atau 2 attempt gagal → stop, dokumentasikan, escalate ke 
 |---|---|---|---|
 | 0 | ✅ selesai | 6/7 | Riset percetakan DITUNDA (manual, perlu user hubungi percetakan) |
 | 1 | ✅ selesai | 8/8 | Semua aspek kustomisasi hardcover masuk sistem (finish, corner, edge, dust jacket, headband, ribbon) |
-| 2 | ⬜ belum | — | — |
-| 3 | ⬜ belum | — | — |
-| 4 | ⬜ belum | — | — |
-| 5 | ⬜ belum | — | — |
-| 6 | ⬜ belum | — | — |
-| 7 | ⬜ belum | — | — |
+| 2 | ✅ selesai | — | — |
+| 3 | ✅ selesai | — | — |
+| 4 | ✅ selesai | — | — |
+| 5 | ✅ selesai | 10/13 | Wizard 3D canvas + cinematic transitions + GSAP scroll parallax + cart + checkout |
+| 6 | ✅ selesai | 4/5 | PDF worker + admin dashboard (ZIP download butuh DB untuk test) |
+| 7 | ✅ selesai | 23/23 | Toast notifications + demo seed data + UI polish |
+| 8 | ✅ selesai | 15/15 | Fullscreen 3D scroll showcase + Soft-touch matte PBR + Live 2D/3D cover sync + Inside lined/plain paper view + Camera cinematic toolbar |
 
 ## Multi-Agent Convention
 

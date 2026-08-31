@@ -3,7 +3,6 @@ import { useRef, useMemo, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
-import type { MeshStandardMaterialParameters } from 'three';
 import {
   buildMaterial,
   buildEdgeMaterial,
@@ -13,47 +12,50 @@ import {
   RIBBON_COLORS,
   PAPER_COLORS,
   ENDPAPER_COLORS,
-  COVER_PARAMS,
-  COVER_COLOR,
 } from './book-materials';
 import type { CoverFinish, EdgeFinish, CornerShape } from './book-materials';
 
 const MM_TO_UNITS = 0.01; // 1mm = 0.01 scene units
-const BOARD_THICKNESS = 0.022; // ~2.2mm board thickness in scene units
+const BOARD_THICKNESS = 0.022; // ~2.2mm greyboard thickness in scene units
 
 export interface HardcoverModelProps {
   coverFinish?: CoverFinish;
+  coverColor?: string;
   edgeFinish?: EdgeFinish;
   cornerShape?: CornerShape;
   hasDustJacket?: boolean;
   headbandCode?: string;
   ribbonCodes?: string[];
+  ribbonSway?: boolean;
   spineWidthMm?: number;
   sizeCode?: string;
-  coverTextureUrl?: string; // URL or data URL from Konva canvas
-  layout?: 'plain' | 'lined'; // Inside page layout
-  paperCode?: string;         // Paper stock code (BOOK72, HVS80, etc.)
-  endpaperCode?: string;      // Endpaper code
+  coverTextureUrl?: string;
+  coverLabel?: string;
+  layout?: 'plain' | 'lined';
+  paperCode?: string;
+  endpaperCode?: string;
   autoRotate?: boolean;
   autoRotateSpeed?: number;
   coverOpenAngle?: number; // 0 (closed) to Math.PI (open)
 }
 
-// Convert mm dimensions to scene units
 function mmToUnits(mm: number) {
   return mm * MM_TO_UNITS;
 }
 
 export function HardcoverModel({
   coverFinish = 'doff',
+  coverColor,
   edgeFinish = 'plain',
   cornerShape = 'square',
   hasDustJacket = false,
   headbandCode,
   ribbonCodes = [],
+  ribbonSway = true,
   spineWidthMm = 12,
   sizeCode = 'A5',
   coverTextureUrl,
+  coverLabel,
   layout = 'plain',
   paperCode = 'BOOK72',
   endpaperCode = 'ENDPLAIN',
@@ -71,10 +73,19 @@ export function HardcoverModel({
   const boardT = BOARD_THICKNESS;
   const radius = CORNER_RADIUS[cornerShape] ?? 0;
 
+  // Book engineering proportions
+  const jointW = 0.035; // French groove hinge gap
+  const boardW = Math.max(0.2, w - jointW);
+  const spineX = -w / 2;
+  const overhang = 0.018; // 1.8mm cover overhang over pages
+  const pageW = Math.max(0.1, boardW - overhang);
+  const pageH = Math.max(0.1, h - overhang * 2);
+  const pageT = Math.max(0.02, spineW - 0.006);
+
   const currentTextureRef = useRef<THREE.Texture | null>(null);
   const pageTextureRef = useRef<THREE.Texture | null>(null);
 
-  // Load dynamic cover texture when coverTextureUrl changes
+  // Load dynamic cover texture
   useEffect(() => {
     if (!coverTextureUrl) {
       setLoadedTexture(null);
@@ -115,18 +126,25 @@ export function HardcoverModel({
     };
   }, [coverTextureUrl]);
 
-  // Clean up textures ONLY on component unmount
+  // Clean up Three.js resources on unmount and on dependency changes
   useEffect(() => {
     return () => {
-      if (currentTextureRef.current) currentTextureRef.current.dispose();
-      if (pageTextureRef.current) pageTextureRef.current.dispose();
+      if (currentTextureRef.current) {
+        currentTextureRef.current.dispose();
+        currentTextureRef.current = null;
+      }
+      if (pageTextureRef.current) {
+        pageTextureRef.current.dispose();
+        pageTextureRef.current = null;
+      }
     };
   }, []);
 
-  // Materials
+  // Cover material
   const finishParams = useMemo(() => {
     return buildMaterial({
       coverFinish,
+      coverColor,
       edgeFinish,
       cornerShape,
       hasDustJacket,
@@ -135,57 +153,141 @@ export function HardcoverModel({
       spineWidthMm,
       sizeCode,
     });
-  }, [coverFinish, edgeFinish, cornerShape, hasDustJacket, headbandCode, ribbonCodes, spineWidthMm, sizeCode]);
+  }, [coverFinish, coverColor, edgeFinish, cornerShape, hasDustJacket, headbandCode, ribbonCodes, spineWidthMm, sizeCode]);
+
+  // A tiny transparent canvas carries the default studio title without a network font request.
+  // Uploaded artwork still takes priority over this label.
+  const coverLabelTexture = useMemo(() => {
+    if (!coverLabel || typeof document === 'undefined') return null;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 900;
+    canvas.height = 1260;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    const brass = '#d1b27a';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = brass;
+    ctx.globalAlpha = 0.82;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(210, 376);
+    ctx.lineTo(690, 376);
+    ctx.moveTo(210, 892);
+    ctx.lineTo(690, 892);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = brass;
+    ctx.font = '600 66px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(coverLabel.toUpperCase(), canvas.width / 2, 635);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+    return texture;
+  }, [coverLabel]);
+
+  useEffect(() => () => coverLabelTexture?.dispose(), [coverLabelTexture]);
 
   // Page edge finish PBR params
-  const edgeParams = useMemo(() => buildEdgeMaterial(edgeFinish), [edgeFinish]);
+  const edgeParams = useMemo(() => buildEdgeMaterial(edgeFinish, paperCode), [edgeFinish, paperCode]);
 
-  // Procedural inside page texture (lined / plain + paper color)
-  const pagePaperColor = paperCode ? PAPER_COLORS[paperCode] ?? '#f8f4e6' : '#f8f4e6';
-  const endpaperColor = endpaperCode ? ENDPAPER_COLORS[endpaperCode] ?? '#f5eedc' : '#f5eedc';
+  // Procedural inside notebook page texture (with authentic Memo/Date header & ruled lines)
+  const pagePaperColor = paperCode ? PAPER_COLORS[paperCode] ?? '#ebdcb2' : '#ebdcb2';
+  const endpaperColor = endpaperCode ? ENDPAPER_COLORS[endpaperCode] ?? '#eee5cf' : '#eee5cf';
 
   const pageTexture = useMemo(() => {
     if (typeof document === 'undefined') return null;
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 724;
+    canvas.width = 600;
+    canvas.height = 840;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
 
-    // Background paper color
+    // 1. Paper Background Color
     ctx.fillStyle = pagePaperColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Left gutter shadow for realism
-    const grad = ctx.createLinearGradient(0, 0, 42, 0);
-    grad.addColorStop(0, 'rgba(0, 0, 0, 0.12)');
+    // 2. Subtle organic paper grain
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.012)';
+    for (let i = 0; i < 500; i++) {
+      const rx = Math.random() * canvas.width;
+      const ry = Math.random() * canvas.height;
+      ctx.fillRect(rx, ry, 1.2, 1.2);
+    }
+
+    // 3. Left spine gutter depth shadow
+    const grad = ctx.createLinearGradient(0, 0, 56, 0);
+    grad.addColorStop(0, 'rgba(0, 0, 0, 0.16)');
     grad.addColorStop(0.3, 'rgba(0, 0, 0, 0.04)');
     grad.addColorStop(1, 'rgba(0, 0, 0, 0.0)');
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 42, canvas.height);
+    ctx.fillRect(0, 0, 56, canvas.height);
 
     if (layout === 'lined') {
+      // 4. Notebook Header Bar (Memo No. & Date) as shown in reference image
+      ctx.fillStyle = 'rgba(80, 95, 110, 0.75)';
+      ctx.font = '13px sans-serif';
+      ctx.fillText('Memo No.', 50, 48);
+      ctx.fillText('Date:', canvas.width - 190, 48);
+
+      // Memo line
+      ctx.strokeStyle = 'rgba(120, 135, 150, 0.4)';
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.moveTo(118, 50);
+      ctx.lineTo(210, 50);
+      ctx.stroke();
+
+      // Date line
+      ctx.beginPath();
+      ctx.moveTo(canvas.width - 150, 50);
+      ctx.lineTo(canvas.width - 45, 50);
+      ctx.stroke();
+
+      // Days of week indicators (Mo Tu We Th Fr Sa Su)
+      const days = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+      ctx.font = '10px sans-serif';
+      ctx.fillStyle = 'rgba(100, 115, 130, 0.6)';
+      days.forEach((day, idx) => {
+        const x = 235 + idx * 26;
+        ctx.strokeStyle = 'rgba(140, 155, 170, 0.45)';
+        ctx.strokeRect(x - 2, 38, 20, 14);
+        ctx.fillText(day, x + 2, 49);
+      });
+
+      // Top separator line
+      ctx.strokeStyle = 'rgba(120, 135, 150, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(45, 68);
+      ctx.lineTo(canvas.width - 40, 68);
+      ctx.stroke();
+
       // Horizontal ruled lines
-      ctx.strokeStyle = 'rgba(70, 95, 130, 0.28)';
-      ctx.lineWidth = 1.4;
-      const startY = 65;
-      const lineSpacing = 26;
-      const numLines = Math.floor((canvas.height - 110) / lineSpacing);
+      ctx.strokeStyle = 'rgba(90, 115, 145, 0.28)';
+      ctx.lineWidth = 1.2;
+      const startY = 102;
+      const lineSpacing = 30;
+      const numLines = Math.floor((canvas.height - 130) / lineSpacing);
 
       for (let i = 0; i < numLines; i++) {
         const y = startY + i * lineSpacing;
         ctx.beginPath();
-        ctx.moveTo(35, y);
-        ctx.lineTo(canvas.width - 25, y);
+        ctx.moveTo(45, y);
+        ctx.lineTo(canvas.width - 40, y);
         ctx.stroke();
       }
 
       // Vertical left margin line (classic notebook rule)
-      ctx.strokeStyle = 'rgba(215, 65, 65, 0.32)';
-      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = 'rgba(220, 70, 70, 0.35)';
+      ctx.lineWidth = 1.3;
       ctx.beginPath();
-      ctx.moveTo(72, 35);
-      ctx.lineTo(72, canvas.height - 35);
+      ctx.moveTo(85, 68);
+      ctx.lineTo(85, canvas.height - 40);
       ctx.stroke();
     }
 
@@ -206,23 +308,24 @@ export function HardcoverModel({
   });
 
   const headbandColor = headbandCode ? HEADBAND_COLORS[headbandCode] ?? '#b71c1c' : null;
-
-  // Page block dimensions (slightly recessed inside cover boards for realistic hardcover look)
-  const squareOverhang = 0.015; // 1.5mm standard overhang
-  const pageW = Math.max(0.1, w - squareOverhang * 2);
-  const pageH = Math.max(0.1, h - squareOverhang * 2);
-  const pageT = Math.max(0.02, spineW - 0.004);
-
-  // Position constants
-  const spineX = -w / 2 + boardT / 2;
+  const isOpen = coverOpenAngle > 0.05;
+  const coverArtwork = loadedTexture ?? coverLabelTexture;
 
   return (
     <group ref={groupRef} position={[0, 0, 0]}>
-      {/* ── Back Cover Board — hinged at spine, opens to the LEFT ───────────── */}
-      <group position={[spineX, 0, 0]} rotation={[0, coverOpenAngle, 0]}>
-        <group position={[-w / 2, 0, 0]}>
+      {/* ── Spine (Left edge: -X) ────────────────────────────────────────────── */}
+      <group position={[spineX + boardT * 0.5, 0, 0]}>
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[boardT, h, spineW + boardT * 2]} />
+          <meshStandardMaterial {...finishParams} />
+        </mesh>
+      </group>
+
+      {/* ── Back Cover Board (Bottom/Back at -Z) ──────────────────────────────── */}
+      <group position={[spineX + jointW, 0, -spineW / 2 - boardT / 2]}>
+        <group position={[boardW / 2, 0, 0]}>
           <RoundedBox
-            args={[w, h, boardT]}
+            args={[boardW, h, boardT]}
             radius={radius}
             smoothness={4}
             castShadow
@@ -230,34 +333,43 @@ export function HardcoverModel({
           >
             <meshStandardMaterial {...finishParams} />
           </RoundedBox>
-          {/* Inside back endpaper (visible when book is open) */}
-          <mesh position={[0, 0, boardT / 2 + 0.0005]}>
-            <planeGeometry args={[w * 0.96, h * 0.96]} />
+
+          {/* Inside back endpaper */}
+          <mesh position={[0, 0, boardT / 2 + 0.0006]}>
+            <planeGeometry args={[boardW * 0.98, h * 0.98]} />
             <meshStandardMaterial color={endpaperColor} roughness={0.92} metalness={0.0} />
           </mesh>
         </group>
       </group>
 
-      {/* ── Page Block — fans open, hinged at spine ─────────────────────────── */}
-      <BookPages
-        pageW={pageW}
-        pageH={pageH}
-        pageT={pageT}
-        spineW={spineW}
-        totalSheets={12}
-        coverOpenAngle={coverOpenAngle}
-        pageTexture={pageTexture}
-        pagePaperColor={pagePaperColor}
-        endpaperColor={endpaperColor}
-        spineX={spineX}
-        edgeParams={edgeParams}
-      />
+      {/* ── Main Book Block (Pages & Edges) ─────────────────────────────────── */}
+      <group position={[spineX + jointW + pageW / 2 + 0.005, 0, 0]}>
+        {/* Main solid page block showing edge finish (gilded gold, sprayed, plain) */}
+        <mesh castShadow receiveShadow>
+          <boxGeometry args={[pageW, pageH, pageT]} />
+          <meshStandardMaterial {...edgeParams} />
+        </mesh>
 
-      {/* ── Front Cover Board — hinged at spine, opens to the RIGHT ──────────── */}
-      <group position={[spineX, 0, 0]} rotation={[0, -coverOpenAngle, 0]}>
-        <group position={[w / 2, 0, 0]}>
+        {/* Top page surface (Right page of open spread) */}
+        <mesh position={[0, 0, pageT / 2 + 0.0006]}>
+          <planeGeometry args={[pageW * 0.985, pageH * 0.985]} />
+          <meshStandardMaterial
+            map={pageTexture ?? undefined}
+            color={pagePaperColor}
+            roughness={0.95}
+            metalness={0.0}
+          />
+        </mesh>
+      </group>
+
+      {/* ── Front Cover Board (Hinged at spine, opens forward to the left) ────── */}
+      <group
+        position={[spineX + jointW, 0, spineW / 2 + boardT / 2]}
+        rotation={[0, -coverOpenAngle, 0]}
+      >
+        <group position={[boardW / 2, 0, 0]}>
           <RoundedBox
-            args={[w, h, boardT]}
+            args={[boardW, h, boardT]}
             radius={radius}
             smoothness={4}
             castShadow
@@ -266,68 +378,79 @@ export function HardcoverModel({
             <meshStandardMaterial {...finishParams} />
           </RoundedBox>
 
-          {/* Front Face Canvas Artwork Layer (Pixel-perfect 2D to 3D sync) */}
-          {loadedTexture && (
+          {/* Front Face Custom Artwork Layer (2D Canvas sync) */}
+          {coverArtwork && (
             <mesh position={[0, 0, boardT / 2 + 0.0008]}>
-              <planeGeometry args={[w - radius * 0.1, h - radius * 0.1]} />
+              <planeGeometry args={[boardW - radius * 0.1, h - radius * 0.1]} />
               <meshStandardMaterial
-                map={loadedTexture}
+                map={coverArtwork}
                 roughness={finishParams.roughness ?? 0.85}
                 metalness={finishParams.metalness ?? 0.01}
+                // Canvas artwork intentionally has a transparent background.
+                // This lets a later base-colour change remain visible below it.
+                transparent
+                alphaTest={0.01}
                 toneMapped={false}
               />
             </mesh>
           )}
 
-          {/* Inside front endpaper (visible when book is open) */}
-          <mesh position={[0, 0, -boardT / 2 - 0.0005]}>
-            <planeGeometry args={[w * 0.96, h * 0.96]} />
+          {/* Inside front endpaper (visible when cover swings open) */}
+          <mesh position={[0, 0, -boardT / 2 - 0.0006]} rotation={[0, Math.PI, 0]}>
+            <planeGeometry args={[boardW * 0.98, h * 0.98]} />
             <meshStandardMaterial color={endpaperColor} roughness={0.92} metalness={0.0} />
           </mesh>
+
+          {/* Left Page (Front flyleaf page visible when book is opened) */}
+          {isOpen && (
+            <mesh position={[0, 0, -boardT / 2 - 0.0012]} rotation={[0, Math.PI, 0]}>
+              <planeGeometry args={[pageW * 0.97, pageH * 0.97]} />
+              <meshStandardMaterial
+                map={pageTexture ?? undefined}
+                color={pagePaperColor}
+                roughness={0.95}
+                metalness={0.0}
+              />
+            </mesh>
+          )}
         </group>
       </group>
 
-      {/* ── Spine (Left Edge: -X) — static at center, between both covers ── */}
-      <mesh position={[spineX, 0, 0]} castShadow receiveShadow>
-        <boxGeometry args={[boardT, h, spineW]} />
-        <meshStandardMaterial {...finishParams} />
-      </mesh>
-
-      {/* ── Headband (Top of spine) — visible when book is open ─── */}
+      {/* ── Headband & Tailband (Top & Bottom of spine) ──────────────────────── */}
       {headbandColor && (
-        <mesh position={[spineX, pageH / 2 + 0.004, 0]} castShadow>
-          <boxGeometry args={[boardT * 1.2, 0.008, pageT * 0.85]} />
-          <meshStandardMaterial color={headbandColor} roughness={0.7} metalness={0.1} />
-        </mesh>
+        <>
+          {/* Top Headband */}
+          <mesh position={[spineX + 0.016, pageH / 2 + 0.004, 0]} castShadow>
+            <boxGeometry args={[boardT * 1.3, 0.012, pageT * 0.92]} />
+            <meshStandardMaterial color={headbandColor} roughness={0.65} metalness={0.12} />
+          </mesh>
+          {/* Bottom Tailband */}
+          <mesh position={[spineX + 0.016, -pageH / 2 - 0.004, 0]} castShadow>
+            <boxGeometry args={[boardT * 1.3, 0.012, pageT * 0.92]} />
+            <meshStandardMaterial color={headbandColor} roughness={0.65} metalness={0.12} />
+          </mesh>
+        </>
       )}
 
-      {/* ── Tailband (Bottom of spine) ────────── */}
-      {headbandColor && (
-        <mesh position={[spineX, -pageH / 2 - 0.004, 0]} castShadow>
-          <boxGeometry args={[boardT * 1.2, 0.008, pageT * 0.85]} />
-          <meshStandardMaterial color={headbandColor} roughness={0.7} metalness={0.1} />
-        </mesh>
-      )}
-
-      {/* ── Ribbon Marker(s) — attached to spine, hang out from top of pages ── */}
+      {/* ── Satin Ribbon Marker(s) (Matching user reference photo!) ───────────── */}
       {ribbonCodes.slice(0, 2).map((code, i) => {
         const color = RIBBON_COLORS[code] ?? '#b71c1c';
-        const zOffset = 0.01 + i * 0.02;
-        const yTop = pageH / 2 + 0.008;
         return (
-          <RibbonMarker
+          <RealisticRibbonMarker
             key={`${code}-${i}`}
             color={color}
-            startX={spineX + 0.005}
-            startY={yTop}
-            startZ={zOffset}
-            bookHeight={h}
-            bookWidth={w}
+            isOpen={isOpen}
+            spineHingeX={spineX + jointW}
+            pageW={pageW}
+            pageH={pageH}
+            pageT={pageT}
+            index={i}
+            animate={ribbonSway}
           />
         );
       })}
 
-      {/* ── Dust Jacket (Wrap-around Paper Cover) ─────── */}
+      {/* ── Dust Jacket (Wrap-around Paper Cover) ─────────────────────────────── */}
       {hasDustJacket && (
         <DustJacket
           width={w}
@@ -341,135 +464,100 @@ export function HardcoverModel({
   );
 }
 
-// Individual page sheets that fan open when cover opens.
-// Architecture: each page is hinged at the spine (X = spineX).
-// - Page i=0 glued to back cover, rotates with back cover (+openAngle = opens LEFT)
-// - Page i=last glued to front cover, rotates with front cover (-openAngle = opens RIGHT)
-// - Middle pages fan out progressively, forming a smooth dome/arch shape
-function BookPages({
+// Narrow satin marker with a relaxed, asymmetric drape.
+function RealisticRibbonMarker({
+  color,
+  isOpen,
+  spineHingeX,
   pageW,
   pageH,
   pageT,
-  spineW,
-  totalSheets,
-  coverOpenAngle,
-  pageTexture,
-  pagePaperColor,
-  endpaperColor,
-  spineX,
-  edgeParams,
+  index,
+  animate,
 }: {
+  color: string;
+  isOpen: boolean;
+  spineHingeX: number;
   pageW: number;
   pageH: number;
   pageT: number;
-  spineW: number;
-  totalSheets: number;
-  coverOpenAngle: number;
-  pageTexture: THREE.CanvasTexture | THREE.Texture | null;
-  pagePaperColor: string;
-  endpaperColor: string;
-  spineX: number;
-  edgeParams: MeshStandardMaterialParameters;
-}) {
-  // Cap at ~162° (90% of pi) to keep pages from clipping with covers
-  const openAngle = Math.min(coverOpenAngle, Math.PI * 0.9);
-
-  return (
-    <group>
-      {Array.from({ length: totalSheets }).map((_, i) => {
-        // t = 0 → page glued to BACK cover (opens LEFT, +rotationY)
-        // t = 1 → page glued to FRONT cover (opens RIGHT, -rotationY)
-        // t = 0.5 → page near spine, doesn't move much
-        const t = totalSheets <= 1 ? 0.5 : i / (totalSheets - 1);
-
-        // Linear fan: pages spread smoothly from -openAngle (front side)
-        //             through 0 (middle, near spine) to +openAngle (back side)
-        const rotationY = (0.5 - t) * 2 * openAngle;
-
-        // Each page slightly thinner than total page block
-        const sheetThickness = (pageT / totalSheets) * 0.95;
-
-        // Page sits at spine, extends to the RIGHT (positive X)
-        // When it rotates, it pivots cleanly around the spine
-        return (
-          <group
-            key={i}
-            position={[spineX, 0, 0]}
-            rotation={[0, rotationY, 0]}
-          >
-            <group position={[pageW / 2, 0, 0]}>
-              {/* Page sheet body — thin box showing edge color */}
-              <mesh castShadow receiveShadow>
-                <boxGeometry args={[pageW, pageH, sheetThickness]} />
-                <meshStandardMaterial {...edgeParams} />
-              </mesh>
-
-              {/* Top surface of page — shows layout (lined/plain) */}
-              <mesh position={[0, 0, sheetThickness / 2 + 0.0004]}>
-                <planeGeometry args={[pageW * 0.99, pageH * 0.98]} />
-                <meshStandardMaterial
-                  map={pageTexture ?? undefined}
-                  color={pagePaperColor}
-                  roughness={0.96}
-                  metalness={0.0}
-                />
-              </mesh>
-
-              {/* Bottom surface — same paper color */}
-              <mesh position={[0, 0, -(sheetThickness / 2 + 0.0004)]} rotation={[0, Math.PI, 0]}>
-                <planeGeometry args={[pageW * 0.99, pageH * 0.98]} />
-                <meshStandardMaterial
-                  color={pagePaperColor}
-                  roughness={0.97}
-                  metalness={0.0}
-                />
-              </mesh>
-            </group>
-          </group>
-        );
-      })}
-    </group>
-  );
-}
-
-// Organic draping Ribbon Marker
-function RibbonMarker({
-  color,
-  startX,
-  startY,
-  startZ,
-  bookHeight,
-  bookWidth,
-}: {
-  color: string;
-  startX: number;
-  startY: number;
-  startZ: number;
-  bookHeight: number;
-  bookWidth: number;
+  index: number;
+  animate: boolean;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
+  const xOffset = index * 0.04;
+
+  // Parametric curved spline geometry for a fabric-like marker.
+  const geometry = useMemo(() => {
+    let points: THREE.Vector3[] = [];
+
+    if (isOpen) {
+      // Open book: an asymmetric S-curve settles across the right page before the tail drops.
+      const topZ = pageT / 2 + 0.004;
+      points = [
+        new THREE.Vector3(spineHingeX + 0.02 + xOffset, pageH / 2 + 0.01, topZ),
+        new THREE.Vector3(spineHingeX + 0.07 + xOffset, pageH * 0.34, topZ + 0.006),
+        new THREE.Vector3(spineHingeX + 0.17 + xOffset, pageH * 0.10, topZ + 0.012),
+        new THREE.Vector3(spineHingeX + 0.08 + xOffset, -pageH * 0.12, topZ + 0.014),
+        new THREE.Vector3(spineHingeX + 0.21 + xOffset, -pageH * 0.31, topZ + 0.018),
+        new THREE.Vector3(spineHingeX + 0.13 + xOffset, -pageH / 2 - 0.045, topZ + 0.02),
+        new THREE.Vector3(spineHingeX + 0.20 + xOffset, -pageH / 2 - 0.11, topZ + 0.016),
+      ];
+    } else {
+      // Closed book: a compact fabric wave keeps the tail away from a rigid vertical drop.
+      points = [
+        new THREE.Vector3(spineHingeX + 0.03 + xOffset, pageH / 2 + 0.012, 0.0),
+        new THREE.Vector3(spineHingeX + 0.08 + xOffset, pageH * 0.23, 0.012),
+        new THREE.Vector3(spineHingeX + 0.02 + xOffset, -pageH * 0.02, 0.022),
+        new THREE.Vector3(spineHingeX + 0.12 + xOffset, -pageH * 0.27, 0.03),
+        new THREE.Vector3(spineHingeX + 0.05 + xOffset, -pageH / 2 - 0.04, 0.038),
+        new THREE.Vector3(spineHingeX + 0.13 + xOffset, -pageH / 2 - 0.11, 0.032),
+      ];
+    }
+
+    const curve = new THREE.CatmullRomCurve3(points);
+    // Extrude as a thin flat satin strip. This geometry is memoized, never rebuilt per frame.
+    const shape = new THREE.Shape();
+    const ribbonWidth = 0.009;
+    const ribbonThick = 0.0007;
+    shape.moveTo(-ribbonWidth / 2, -ribbonThick / 2);
+    shape.lineTo(ribbonWidth / 2, -ribbonThick / 2);
+    shape.lineTo(ribbonWidth / 2, ribbonThick / 2);
+    shape.lineTo(-ribbonWidth / 2, ribbonThick / 2);
+    shape.closePath();
+
+    return new THREE.ExtrudeGeometry(shape, {
+      steps: 28,
+      bevelEnabled: false,
+      extrudePath: curve,
+    });
+  }, [isOpen, spineHingeX, pageH, pageT, xOffset]);
+
+  // Dispose procedural ribbon geometry on unmount / dependency change
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+    };
+  }, [geometry]);
 
   useFrame((state) => {
-    if (meshRef.current) {
+    if (animate && meshRef.current) {
       const t = state.clock.elapsedTime;
-      meshRef.current.rotation.z = Math.sin(t * 1.8 + startX * 10) * 0.03;
-      meshRef.current.rotation.x = Math.sin(t * 1.4 + startZ * 5) * 0.02;
+      // A restrained, irregular-feeling fabric sway without geometry churn.
+      meshRef.current.position.z = Math.sin(t * 1.08 + index * 0.9) * 0.002;
+      meshRef.current.position.x = Math.sin(t * 0.72 + index * 1.7) * 0.0025;
     }
   });
 
   return (
-    <group position={[startX + 0.08, startY - bookHeight * 0.45, startZ + 0.008]}>
-      <mesh ref={meshRef} castShadow>
-        <planeGeometry args={[0.022, bookHeight * 0.9, 12, 1]} />
-        <meshStandardMaterial
-          color={color}
-          roughness={0.5}
-          metalness={0.15}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
-    </group>
+    <mesh ref={meshRef} geometry={geometry} castShadow>
+      <meshStandardMaterial
+        color={color}
+        roughness={0.42}
+        metalness={0.05}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
   );
 }
 
@@ -487,7 +575,7 @@ function DustJacket({
   boardThickness: number;
   radius: number;
 }) {
-  const jacketW = width * 0.85;
+  const jacketW = width * 0.88;
   const jacketH = height + 0.008;
   const jacketT = 0.003;
   const frontZ = spineWidth / 2 + boardThickness + jacketT;
@@ -497,7 +585,7 @@ function DustJacket({
   return (
     <group>
       {/* Front Jacket Sheet */}
-      <mesh position={[-width / 2 + jacketW / 2 + 0.01, 0, frontZ]}>
+      <mesh position={[-width / 2 + jacketW / 2 + 0.02, 0, frontZ]}>
         <planeGeometry args={[jacketW, jacketH]} />
         <meshStandardMaterial
           color="#ffffff"
@@ -523,7 +611,7 @@ function DustJacket({
       </mesh>
 
       {/* Back Jacket Sheet */}
-      <mesh position={[-width / 2 + jacketW / 2 + 0.01, 0, backZ]} rotation={[0, Math.PI, 0]}>
+      <mesh position={[-width / 2 + jacketW / 2 + 0.02, 0, backZ]} rotation={[0, Math.PI, 0]}>
         <planeGeometry args={[jacketW, jacketH]} />
         <meshStandardMaterial
           color="#ffffff"

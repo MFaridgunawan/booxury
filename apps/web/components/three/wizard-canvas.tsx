@@ -20,11 +20,12 @@ const Scene3D = dynamic(
 
 interface WizardCanvasProps {
   phase?: string;
+  mode?: 'orbit' | 'cinematic';
   className?: string;
 }
 
-export function WizardCanvas({ phase = 'base', className = '' }: WizardCanvasProps) {
-  const { base, finish, estimatedPrice } = useConfiguratorStore();
+export function WizardCanvas({ phase = 'base', mode = 'orbit', className = '' }: WizardCanvasProps) {
+  const { base, finish, coverTextureUrl, spineWidthMm } = useConfiguratorStore();
 
   return (
     <div
@@ -32,17 +33,22 @@ export function WizardCanvas({ phase = 'base', className = '' }: WizardCanvasPro
       style={{ minHeight: 320 }}
     >
       <Scene3D
-        mode="orbit"
+        mode={mode}
         sizeCode={base.size}
-        spineWidthMm={12} // will be updated from estimatedPrice if available
+        spineWidthMm={spineWidthMm}
         coverFinish={finish.coverFinish}
+        coverColor={finish.coverColor}
         cornerShape={finish.cornerShape}
+        edgeFinish={finish.edgeFinish}
         hasDustJacket={finish.hasDustJacket}
         headbandCode={finish.headbandCode}
         ribbonCodes={finish.ribbonCodes ?? []}
+        coverTextureUrl={coverTextureUrl ?? undefined}
+        layout={base.layout}
+        paperCode={base.paperCode}
+        endpaperCode={base.endpaperCode}
         phase={phase}
         dpr={[1, 1.5]}
-        bloomIntensity={0.2}
       />
 
       {/* Phase label overlay */}

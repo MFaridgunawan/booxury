@@ -1,25 +1,14 @@
 'use client';
-import { useRef, useState } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
-import {
-  Stage,
-  PerformanceMonitor,
-  AdaptiveDpr,
-  AdaptiveEvents,
-  BakeShadows,
-  Environment,
-} from '@react-three/drei';
-import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+import { Canvas } from '@react-three/fiber';
+import * as THREE from 'three';
 import { HardcoverModel } from './hardcover-model';
-import { OrbitRig, CinematicRig } from './camera-rigs';
-import gsap from 'gsap';
+import { CinematicOrbitRig } from './camera-rigs';
 import type { CoverFinish, EdgeFinish, CornerShape } from './book-materials';
-
-gsap.registerPlugin();
 
 export interface Scene3DProps {
   // Book geometry
   coverFinish?: CoverFinish;
+  coverColor?: string;
   edgeFinish?: EdgeFinish;
   cornerShape?: CornerShape;
   hasDustJacket?: boolean;
@@ -28,6 +17,10 @@ export interface Scene3DProps {
   spineWidthMm?: number;
   sizeCode?: string;
   coverTextureUrl?: string;
+  coverOpenAngle?: number;
+  layout?: 'plain' | 'lined';
+  paperCode?: string;
+  endpaperCode?: string;
 
   // Camera mode
   mode?: 'orbit' | 'cinematic';
@@ -36,16 +29,16 @@ export interface Scene3DProps {
   // Performance
   dpr?: [number, number];
 
-  // Auto rotation (landing page)
+  // Auto rotation
   autoRotate?: boolean;
   autoRotateSpeed?: number;
 
-  // Postprocessing
+  // Optional backward compatibility
   bloomIntensity?: number;
 }
-
 export function Scene3D({
   coverFinish = 'doff',
+  coverColor,
   edgeFinish = 'plain',
   cornerShape = 'square',
   hasDustJacket = false,
@@ -54,55 +47,54 @@ export function Scene3D({
   spineWidthMm = 12,
   sizeCode = 'A5',
   coverTextureUrl,
+  coverOpenAngle = 0,
+  layout = 'plain',
+  paperCode = 'BOOK72',
+  endpaperCode = 'ENDPLAIN',
   mode = 'orbit',
   phase = 'base',
   dpr = [1, 2],
   autoRotate = false,
   autoRotateSpeed = 0.3,
-  bloomIntensity = 0.3,
 }: Scene3DProps) {
-  const [dprValue, setDpr] = useState(dpr[0]);
-
   return (
     <Canvas
       frameloop="always"
-      dpr={dprValue}
+      dpr={[dpr[0], Math.min(dpr[1], 1.5)]}
       gl={{
         antialias: true,
         powerPreference: 'high-performance',
         alpha: true,
       }}
-      shadows
+      onCreated={({ gl }) => {
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.toneMappingExposure = 1.1;
+      }}
+      camera={{ position: [2.6, 1.6, 4.4], fov: 34 }}
       style={{ width: '100%', height: '100%' }}
     >
-      {/* Performance management */}
-      <PerformanceMonitor
-        onDecline={() => setDpr(1)}
-        onIncline={() => setDpr(dpr[1] ?? 2)}
-        bounds={() => [55, 90]}
-      />
-      <AdaptiveDpr pixelated />
-      <AdaptiveEvents />
-
-      {/* Lighting */}
-      <ambientLight intensity={0.4} />
+      {/* Deliberately simple studio lighting: it is faster and avoids remote
+          environment-map loading in the configurator sidebar. */}
+      <ambientLight intensity={0.75} />
       <directionalLight
-        position={[5, 5, 5]}
-        intensity={1.2}
-        castShadow
-        shadow-mapSize={[1024, 1024]}
+        position={[5, 7, 5]}
+        intensity={1.4}
+        color="#fffaf0"
       />
-      <directionalLight position={[-3, 2, -2]} intensity={0.3} />
-
-      {/* Stage — handles environment + shadows */}
-      <Stage
-        environment="studio"
-        intensity={0.5}
-        adjustCamera={false}
-        shadows={{ type: 'accumulative', bias: -0.0001 }}
-      >
+      <directionalLight
+        position={[-5, 3, -3]}
+        intensity={0.55}
+        color="#e8f0fe"
+      />
+      <pointLight
+        position={[0, -2.5, 2.5]}
+        intensity={0.35}
+        color="#ffd7a8"
+      />
+      <group position={[0, 0, 0]}>
         <HardcoverModel
           coverFinish={coverFinish}
+          coverColor={coverColor}
           edgeFinish={edgeFinish}
           cornerShape={cornerShape}
           hasDustJacket={hasDustJacket}
@@ -111,27 +103,24 @@ export function Scene3D({
           spineWidthMm={spineWidthMm}
           sizeCode={sizeCode}
           coverTextureUrl={coverTextureUrl}
+          coverOpenAngle={coverOpenAngle}
+          layout={layout}
+          paperCode={paperCode}
+          endpaperCode={endpaperCode}
           autoRotate={autoRotate}
           autoRotateSpeed={autoRotateSpeed}
         />
-      </Stage>
+        <mesh position={[0, -1.16, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[1.7, 0.8, 1]} renderOrder={-1}>
+          <circleGeometry args={[1, 48]} />
+          <meshBasicMaterial color="#050505" transparent opacity={0.32} depthWrite={false} />
+        </mesh>
+      </group>
 
-      {/* Camera */}
-      {mode === 'orbit' ? (
-        <OrbitRig />
-      ) : (
-        <CinematicRig phase={phase} />
-      )}
-
-      {/* Postprocessing */}
-      <EffectComposer>
-        <Bloom
-          luminanceThreshold={0.7}
-          luminanceSmoothing={0.3}
-          intensity={bloomIntensity}
-        />
-        <Vignette eskil={false} offset={0.15} darkness={0.4} />
-      </EffectComposer>
+      <CinematicOrbitRig
+        phase={phase}
+        autoRotate={autoRotate}
+        autoRotateSpeed={autoRotateSpeed}
+      />
     </Canvas>
   );
 }

@@ -1,5 +1,4 @@
-import { FastifyInstance } from 'fastify';
-import { prisma } from '../server.js';
+import { FastifyInstance } from '../../types.js';
 
 // Static lookups — not stored in DB (MVP)
 const CORNER_SHAPES = [

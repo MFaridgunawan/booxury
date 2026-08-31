@@ -1,12 +1,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import archiver from 'archiver';
-import { generateCoverPdf } from './cover';
+import { generateCoverPdf, generateCoverPdfBuffer, generateCoverPreviewPng } from './cover';
 import { generateInteriorPdf } from './interior';
 import { generateSpecSheetPdf } from './spec-sheet';
 import { calculateSpine } from '@booxury/spine-calc';
 
-export { generateCoverPdf, generateInteriorPdf, generateSpecSheetPdf };
+export { generateCoverPdf, generateCoverPdfBuffer, generateCoverPreviewPng, generateInteriorPdf, generateSpecSheetPdf };
+
+export { generateCustomerProofPdf } from './customer-proof';
+export type { CustomerProofInput } from './customer-proof';
 
 export interface ProductionJob {
   orderNumber: string;

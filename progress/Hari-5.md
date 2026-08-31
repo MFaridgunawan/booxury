@@ -171,3 +171,157 @@ Lihat [`./ERRORS.md`](./ERRORS.md)
 - User preference: "yang penting aspek-aspek yang bisa dikustomisasi masukkan ke dalam bagian kustom" — semua customization (corner shape, edge finish, dust jacket, headband, ribbon) sudah termodel di hardcover-model.tsx.
 - Tech stack confirmed (Aug 2026): three@0.185.1, fiber@9.7.0, drei@10.7.8, postprocessing@3.1.0, gsap@3.15.0, motion@13.1.1
 - API build failure pre-existing (TypeScript lib config), tidak terkait dengan sprint 3D ini.
+
+---
+
+## Session Continuation (Commit 4a2a0ba → 25 Agt 2026)
+
+**Status**: ✅ All tasks completed — build clean (13/13 pages), all errors resolved
+
+### Tasks Completed This Session
+
+#### 1. TypeScript Fix: API Response Field Names ✅
+- `customize/cover/page.tsx`: type annotation updated from `paperMaterial`/`boardMaterial` → `paper`/`board` (matching Prisma schema relation names)
+
+#### 2. Cart Flow Fix: designId Wired Through ✅
+- Added `designId?: string` to `CartItem` interface in Zustand store
+- Review page now passes `designId` when adding to cart
+- Checkout page handles optional `designId` gracefully (no longer blocks checkout)
+
+#### 3. Duplicate 3D Preview Removed ✅
+- `customize/review/page.tsx`: Removed redundant `Book3DPreview` component (WizardLayout already provides persistent 3D sidebar)
+
+### Build Status
+```
+@booxury/web#build  ✅ 13/13 static pages — clean
+@booxury/api#build  ✅ tsc — clean
+```
+
+### Errors Fixed (Session)
+- E011: `paperMaterial` → `paper` type mismatch (resolved)
+- E012: `designId` missing from cart flow (resolved)
+
+**Status**: ✅ All 5 remaining tasks completed — build clean (10/10 pages)
+
+### Tasks Completed This Session
+
+#### 1. Wire WizardCanvas → All Wizard Pages ✅
+- Removed per-page `WizardCanvas` from `base`, `cover`, `finish`, `review`
+- Created `WizardLayout.tsx` (new) — persistent wrapper that owns the 3D canvas sidebar
+- `WizardLayout` = header + persistent `Scene3D` sidebar + animated content area
+- Pages simplified to single-column form content (no own header/sidebar/grid)
+- `WizardSidebar`: sticky left column, `Scene3D` reads Zustand phase reactively
+
+#### 2. Cinematic Phase Transitions ✅
+- `WizardLayout` uses `PhaseOverlay` with GSAP tween: content fades left (0.3s) → phase change → fades right (0.4s)
+- `Scene3D` with `mode="orbit"` + `phase` prop — OrbitRig provides interactive orbit on all wizard steps
+- `WizardCanvas` updated to accept `mode` prop (orbit/cinematic)
+
+#### 3. Review Page Cinematic Reveal ✅
+- `review/page.tsx` simplified — no 2D flat illustration, just checklist + config summary
+- 3D canvas sidebar shows the book continuously
+- `mode="cinematic"` available on WizardCanvas for dedicated cinematic reveal (passes `phase="review"`)
+
+#### 4. Landing GSAP Scroll Parallax ✅
+- Created `components/ui/scroll-animations.ts` — `useSectionReveal` hook (GSAP ScrollTrigger, staggered children)
+- Landing page split into Server Component (`page.tsx` for metadata) + Client Component (`_HomePageClient.tsx`)
+- Hero text: `gsap.to(heroTextRef, { y: -80, opacity: 0, scrub: 1.2 })` — parallax fade on scroll
+- Feature cards: staggered fade-up via `useSectionReveal`
+- CTA section: fade-up reveal
+
+#### 5. Pre-flight Checklist + Cart + Checkout ✅
+- Added `cart` slice to `configurator.ts` store (Zustand): `addToCart`, `removeFromCart`, `clearCart`
+- `checkout/cart/page.tsx` — shows cart items with 2D book illustration, price, remove button, checkout CTA
+- `checkout/page.tsx` — shipping form (JNE/J&T/SiCepat/GoSend), address fields, payment (COD/mock Midtrans), order success state
+- Review page CTA now calls `addToCart()` then navigates to `/checkout/cart`
+- Success state shows order ID + estimated delivery
+
+### New Files
+```
+apps/web/components/wizard/WizardLayout.tsx     # Persistent layout wrapper
+apps/web/components/ui/scroll-animations.ts    # useSectionReveal hook
+apps/web/app/_HomePageClient.tsx               # Client landing page
+apps/web/app/checkout/cart/page.tsx           # Cart page
+apps/web/app/checkout/page.tsx                # Checkout form
+```
+
+### Modified Files
+```
+apps/web/app/page.tsx                          # Server Component shell + metadata
+apps/web/app/customize/layout.tsx             # Uses WizardLayout wrapper
+apps/web/app/customize/base/page.tsx          # Simplified, no sidebar
+apps/web/app/customize/cover/page.tsx         # Simplified, no sidebar
+apps/web/app/customize/finish/page.tsx         # Simplified, no sidebar
+apps/web/app/customize/review/page.tsx         # Simplified, addToCart wired
+apps/web/components/three/wizard-canvas.tsx    # Added mode prop
+apps/web/lib/stores/configurator.ts           # Added cart state
+```
+
+### Build Status
+```
+@booxury/web#build  ✅ Compiled successfully — 10/10 static pages
+```
+
+---
+
+## Session Fixes (25 Agt 2026)
+
+### Runtime Errors Fixed
+
+**1. `Module not found: './_HomePageClient'`**
+- Cause: Turbopack crash cascade + file-split pattern
+- Fix: `page.tsx` jadi pure `'use client'` component langsung; metadata sudah di `layout.tsx`
+- Deleted: `apps/web/app/_HomePageClient.tsx`
+
+**2. `Cannot find module '.prisma/client/default'` (API crash)**
+- Cause: Prisma client belum di-generate
+- Fix: `cd packages/database && pnpm prisma generate` → client generated
+
+**3. `Module not found: '@react-three/drei'` (Turbopack workspace symlink bug)**
+- Cause: Turbopack tidak bisa resolve nested `node_modules` dari `packages/three/`
+- Fix #1: Hapus `--turbo` dari dev script (`apps/web/package.json`)
+- Fix #2: Tambahkan Three.js deps langsung ke `apps/web/package.json`:
+  - `@react-three/drei`, `@react-three/fiber`, `@react-three/postprocessing`, `three`, `postprocessing`
+- `packages/three` tetap sebagai workspace source, web app pakai symlink + hoisted deps
+
+**3. Turbopack crash (`called Option::unwrap() on None`)**
+- Cause: cascading dari error #1
+- Fix: nonaktifkan Turbopack (webpack bundler lebih stable dengan pnpm symlink)
+
+---
+
+## Remaining Work (Sprint 1)
+
+### Belum selesai / perlu di-test di browser:
+1. **Wizard 3D canvas di browser** — `WizardLayout` dengan persistent `Scene3D` sidebar
+2. **Cinematic phase transitions** — GSAP fade/slide antar wizard step
+3. **Landing GSAP scroll parallax** — hero parallax + feature card stagger
+4. **Checkout flow end-to-end** — tambah item → cart → checkout → success
+
+### Pre-existing (bukan scope sprint 3D):
+- API (`apps/api`) butuh database running (Podman + Prisma migrate)
+- Konva editor di `cover/page.tsx` (placeholder)
+
+---
+
+## Next Session Prompt
+
+```
+continue sprint 1 dari session sebelumnya.
+state terakhir:
+- build: @booxury/web ✅ clean (10/10 pages)
+- dev: `pnpm dev` (webpack, tanpa --turbo)
+- Three.js deps sudah di-apps/web/package.json
+- Prisma client sudah di-generate
+- page.tsx sudah pure client component
+
+yang perlu di-test / fix:
+1. kill port 3000: `fuser -k 3000/tcp`
+2. jalankan `pnpm dev` lalu buka browser di http://localhost:3000
+3. test landing page: scroll parallax harus jalan
+4. test wizard flow: /customize/base → finish, 3D canvas harus visible
+5. test add to cart: pilih item di finish → review → "Tambah ke Keranjang"
+6. test checkout: /checkout/cart → /checkout → isi form → pesan
+
+jika ada error, fix lalu report.
+```

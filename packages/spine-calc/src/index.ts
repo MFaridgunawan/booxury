@@ -118,9 +118,65 @@ export function validateSpine(spineMm: number, sizeCode: string, pages: number):
   return { valid: true, warnings: warnings.length ? warnings : undefined };
 }
 
-/** Snap page count to nearest valid signature-multiple */
-export function snapPagesToSignature(pages: number): number {
-  if (pages < MIN_PAGES) return MIN_PAGES;
-  const snapped = Math.round(pages / PAGE_STEP) * PAGE_STEP;
-  return Math.max(MIN_PAGES, snapped);
+/** Standard paper caliper in mm */
+export const PAPER_CALIPER_MAP: Record<string, number> = {
+  BOOK57: 0.075,
+  BOOK72: 0.090,
+  BOOK90: 0.115,
+  HVS70: 0.088,
+  HVS80: 0.105,
+  HVS100: 0.130,
+  ART120: 0.100,
+  ART150: 0.130,
+  MATT120: 0.110,
+  MATT150: 0.140,
+};
+
+/** Standard board thickness in mm */
+export const BOARD_THICKNESS_MAP: Record<string, number> = {
+  BOARD14: 1.4,
+  BOARD18: 1.8,
+  BOARD20: 2.0,
+  BOARD25: 2.5,
+};
+
+/** Standard endpaper thickness in mm */
+export const ENDPAPER_THICKNESS_MAP: Record<string, number> = {
+  ENDFLAT: 0.10,
+  ENDPLAIN: 0.14,
+  ENDPAT: 0.18,
+};
+
+/** Standard book dimensions in mm */
+export const BOOK_SIZE_DIMS: Record<string, { widthMm: number; heightMm: number }> = {
+  A5: { widthMm: 148, heightMm: 210 },
+  B5: { widthMm: 176, heightMm: 250 },
+  A6: { widthMm: 105, heightMm: 148 },
+};
+
+/** Calculate spine width from base configuration */
+export function computeSpineWidth(params: {
+  pages: number;
+  paperCode?: string;
+  boardCode?: string;
+  endpaperCode?: string;
+  sizeCode?: string;
+}): number {
+  const paperCaliperMm = (params.paperCode && PAPER_CALIPER_MAP[params.paperCode]) || 0.105;
+  const boardThicknessMm = (params.boardCode && BOARD_THICKNESS_MAP[params.boardCode]) || 2.0;
+  const endpaperThicknessMm = (params.endpaperCode && ENDPAPER_THICKNESS_MAP[params.endpaperCode]) || 0.14;
+  const bookDims = (params.sizeCode && BOOK_SIZE_DIMS[params.sizeCode]) || BOOK_SIZE_DIMS.A5;
+
+  const result = calculateSpine(
+    {
+      pages: params.pages,
+      paperCaliperMm,
+      boardThicknessMm,
+      endpaperThicknessMm,
+      hingeAllowanceMm: 2.0,
+    },
+    bookDims
+  );
+
+  return result.spineWidthMm;
 }

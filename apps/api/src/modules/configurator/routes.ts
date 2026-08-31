@@ -1,5 +1,5 @@
-import { FastifyInstance } from 'fastify';
-import { z } from 'zod';
+import { FastifyInstance } from '../../types.js';
+import { Prisma } from '@prisma/client';
 import { SaveDesignSchema, UpdateDesignSchema } from '@booxury/design-types';
 import { calculatePrice } from '@booxury/pricing-engine';
 import { calculateSpine } from '@booxury/spine-calc';
@@ -53,17 +53,37 @@ export async function designRoutes(fastify: FastifyInstance) {
     const { name, baseConfig, designPayload, finishConfig, thumbnail } = parsed.data;
 
     const dims = SIZE_DIMS[baseConfig.size] ?? SIZE_DIMS.A5;
-    const caliper = PAPER_CALIPER[baseConfig.paper] ?? 0.105;
-    const board = BOARD_THICKNESS[baseConfig.board] ?? 2.0;
+    const caliper = PAPER_CALIPER[baseConfig.paperCode] ?? 0.105;
+    const board = BOARD_THICKNESS[baseConfig.boardCode] ?? 2.0;
 
     const spine = calculateSpine({
-      pages: baseConfig.pages, paperCaliperMm: caliper, boardThicknessMm: board,
-      endpaperThicknessMm: 0.12, hingeAllowanceMm: 2.0,
+      pages: baseConfig.pages,
+      paperCaliperMm: caliper,
+      boardThicknessMm: board,
+      endpaperThicknessMm: 0.12,
+      hingeAllowanceMm: 2.0,
     }, dims);
 
+    const layoutForDb = baseConfig.layout.toUpperCase() as 'PLAIN' | 'LINED';
+
     const quote = calculatePrice(
-      { ...baseConfig, layout: baseConfig.layout.toUpperCase() as 'PLAIN' | 'LINED' },
-      { coverFinishCode: finishConfig?.coverFinish ?? 'doff', accessories: finishConfig?.accessories ?? [] },
+      {
+        sizeCode: baseConfig.size,
+        pages: baseConfig.pages,
+        paperCode: baseConfig.paperCode,
+        boardCode: baseConfig.boardCode,
+        endpaperCode: baseConfig.endpaperCode ?? 'ENDPLAIN',
+        layout: baseConfig.layout,
+      },
+      {
+        coverFinish: finishConfig?.coverFinish ?? 'doff',
+        cornerShape: finishConfig?.cornerShape ?? 'square',
+        edgeFinish: finishConfig?.edgeFinish ?? 'plain',
+        hasDustJacket: finishConfig?.hasDustJacket ?? false,
+        headbandCode: finishConfig?.headbandCode,
+        ribbonCodes: finishConfig?.ribbonCodes ?? [],
+        accessories: finishConfig?.accessories ?? [],
+      },
       {}
     );
 
@@ -80,16 +100,17 @@ export async function designRoutes(fastify: FastifyInstance) {
 
     const design = await fastify.prisma.design.create({
       data: {
-        userId, name,
+        userId,
+        name,
         sizePresetId: (await fastify.prisma.sizePreset.findUniqueOrThrow({ where: { code: baseConfig.size } })).id,
         coverFinishId: (await fastify.prisma.coverFinish.findUniqueOrThrow({ where: { code: finishConfig?.coverFinish ?? 'doff' } })).id,
-        paperMaterialId: (await fastify.prisma.material.findUniqueOrThrow({ where: { code: baseConfig.paper } })).id,
-        boardMaterialId: (await fastify.prisma.material.findUniqueOrThrow({ where: { code: baseConfig.board } })).id,
+        paperMaterialId: (await fastify.prisma.material.findUniqueOrThrow({ where: { code: baseConfig.paperCode } })).id,
+        boardMaterialId: (await fastify.prisma.material.findUniqueOrThrow({ where: { code: baseConfig.boardCode } })).id,
         pages: baseConfig.pages,
-        layout: baseConfig.layout.toUpperCase() as 'PLAIN' | 'LINED',
-        designPayload: designPayload as object,
-        finishZones: designPayload.finishZones as object | null,
-        finishConfig: finishConfig as object | null,
+        layout: layoutForDb,
+        designPayload: designPayload as Prisma.InputJsonValue,
+        finishZones: designPayload.finishZones?.length ? designPayload.finishZones as Prisma.InputJsonValue : Prisma.JsonNull,
+        finishConfig: finishConfig ? finishConfig as unknown as Prisma.InputJsonValue : Prisma.JsonNull,
         thumbnailUrl,
         totalPrice: quote.total,
         spineWidthMm: spine.spineWidthMm,
@@ -110,12 +131,20 @@ export async function designRoutes(fastify: FastifyInstance) {
   }, async (req, reply) => {
     const userId = (req.user as { id: string }).id;
     const { id } = req.params as { id: string };
-    const design = await fastify.prisma.design.findFirst({ where: { id, userId } });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const design = await (fastify.prisma.design.findFirst({
+      where: { id, userId },
+      include: {
+        sizePreset: { select: { code: true } },
+        paper: { select: { code: true } },
+        board: { select: { code: true } },
+      },
+    } as any)) as any;
     if (!design) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Design not found' } });
     return { design };
   });
 
-  // Update design
+  // Update design (supports partial updates: finishConfig, designPayload, etc.)
   fastify.put('/designs/:id', {
     preHandler: [async (req) => authGuard(fastify, req)],
   }, async (req, reply) => {
@@ -127,8 +156,21 @@ export async function designRoutes(fastify: FastifyInstance) {
     const existing = await fastify.prisma.design.findFirst({ where: { id, userId } });
     if (!existing) return reply.status(404).send({ error: { code: 'NOT_FOUND', message: 'Design not found' } });
 
-    const updated = await fastify.prisma.design.update({ where: { id }, data: { ...parsed.data } });
-    return { updated_at: updated.updatedAt };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateData: any = { ...parsed.data };
+    if (parsed.data.finishConfig) updateData.finishConfig = parsed.data.finishConfig as Prisma.InputJsonValue;
+    if (parsed.data.designPayload) updateData.designPayload = parsed.data.designPayload as Prisma.InputJsonValue;
+    if (parsed.data.baseConfig) {
+      updateData.pages = parsed.data.baseConfig.pages;
+      updateData.layout = (parsed.data.baseConfig.layout as string).toUpperCase() as 'PLAIN' | 'LINED';
+      if (parsed.data.baseConfig.size) {
+        const size = await fastify.prisma.sizePreset.findUnique({ where: { code: parsed.data.baseConfig.size } });
+        if (size) updateData.sizePresetId = size.id;
+      }
+    }
+
+    const updated = await fastify.prisma.design.update({ where: { id }, data: updateData });
+    return { updated_at: updated.updatedAt, total_price: updated.totalPrice };
   });
 
   // Delete design

@@ -55,6 +55,7 @@ export const AccessoryItemSchema = z.object({
 
 export const FinishConfigSchema = z.object({
   coverFinish: CoverFinishCodeSchema,
+  coverColor: z.string().optional().default('#1d3557'),
   cornerShape: CornerShapeSchema.default('square'),
   edgeFinish: EdgeFinishSchema.default('plain'),
   hasDustJacket: z.boolean().default(false),
@@ -96,6 +97,21 @@ export type AccessoryItem = z.infer<typeof AccessoryItemSchema>;
 export type FinishConfig = z.infer<typeof FinishConfigSchema>;
 export type DesignPayload = z.infer<typeof DesignPayloadSchema>;
 export type SaveDesignInput = z.infer<typeof SaveDesignSchema>;
+
+// ── Customer Proof Request ───────────────────────────────────────────────────
+
+export const ProofRequestSchema = z.object({
+  // base + finish from wizard (finish partial untuk guest tanpa finalisasi)
+  base: BaseConfigSchema,
+  finish: FinishConfigSchema.partial().optional().default({}),
+  artworkFront: z
+    .string()
+    .startsWith('data:image/', { message: 'artworkFront harus data URL PNG/JPEG' })
+    .max(2_000_000, { message: 'Artwork maksimal 2MB' })
+    .optional(),
+});
+
+export type ProofRequestInput = z.infer<typeof ProofRequestSchema>;
 
 // ── Paper metadata (for UI display) ──────────────────────────────────────────
 

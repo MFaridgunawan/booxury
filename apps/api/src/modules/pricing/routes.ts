@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance } from '../../types.js';
 import { z } from 'zod';
 import { calculatePrice, calculateSpineForPricing } from '@booxury/pricing-engine';
 import { validateSpine } from '@booxury/spine-calc';

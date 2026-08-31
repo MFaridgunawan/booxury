@@ -156,6 +156,13 @@ export function calculatePrice(
     breakdown.push({ item: `Ribbon marker ${code}`, amount: RIBBON_PRICE });
   }
 
+  // ── Accessories (strap, ribbon from accessories array) ───────────────────────
+  for (const acc of finish.accessories ?? []) {
+    const price = ACCESSORY_PRICES[acc.code] ?? (acc.type === 'STRAP' ? 5000 : 3000);
+    subtotal += price;
+    breakdown.push({ item: `${acc.type === 'STRAP' ? 'Tali' : 'Ribbon'} (${acc.code})`, amount: price });
+  }
+
   // ── Volume discounts ───────────────────────────────────────────────────────
   // 5% discount for thick books (>200 pages)
   if (base.pages >= 200) {

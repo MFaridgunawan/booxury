@@ -1,8 +1,8 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useConfiguratorStore } from '../../../lib/stores/configurator';
-import { useToastStore } from '../../../components/ui/Toast';
+import { useConfiguratorStore } from '@/lib/stores/configurator';
+import { useToastStore } from '@/components/ui/Toast';
 
 const COVER_LABELS: Record<string, string> = {
   doff: 'Laminasi Doff', glossy: 'Laminasi Glossy',
@@ -38,6 +38,7 @@ export default function ReviewPage() {
     breakdown?: Array<{ item: string; amount: number }>;
   } | null>(null);
   const [priceLoading, setPriceLoading] = useState(true);
+  const [blueprintLoading, setBlueprintLoading] = useState(false); // renamed but UI still uses as proof loading
   const [priceError, setPriceError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,7 +70,10 @@ export default function ReviewPage() {
         if (d.error) setPriceError(d.error.message);
         else setPriceData(d);
       })
-      .catch(() => setPriceError('Tidak bisa mengambil harga'))
+      .catch((err: unknown) => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        setPriceError('Tidak bisa mengambil harga');
+      })
       .finally(() => setPriceLoading(false));
     return () => controller.abort();
   }, [base, finish]);
@@ -102,6 +106,69 @@ export default function ReviewPage() {
     });
     router.push('/checkout/cart');
     addToast('Item ditambahkan ke keranjang!', 'success');
+  };
+
+  const handleDownloadProof = async () => {
+    setBlueprintLoading(true);
+    try {
+      // Always use anonymous endpoint with full current state
+      const url = '/api/customer-proof';
+      const body: Record<string, unknown> = {
+        base: {
+          size: base.size,
+          pages: base.pages,
+          paperCode: base.paperCode,
+          boardCode: base.boardCode,
+          endpaperCode: base.endpaperCode,
+          layout: base.layout,
+        },
+        finish: {
+          coverFinish: finish.coverFinish,
+          coverColor: finish.coverColor,
+          cornerShape: finish.cornerShape,
+          edgeFinish: finish.edgeFinish,
+          hasDustJacket: finish.hasDustJacket,
+          headbandCode: finish.headbandCode,
+          ribbonCodes: finish.ribbonCodes,
+          accessories: finish.accessories,
+        },
+      };
+
+      // Only send artwork if it's a data URL (skip blob: or object: URLs)
+      if (coverTextureUrl && coverTextureUrl.startsWith('data:')) {
+        (body as Record<string, unknown>).artworkFront = coverTextureUrl;
+      }
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: { message: `HTTP ${res.status}` } }));
+        throw new Error((errData as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+
+      // Extract filename from Content-Disposition or fallback
+      const disp = res.headers.get('content-disposition') ?? '';
+      const fnMatch = disp.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      const filename = fnMatch ? fnMatch[1].replace(/['"]/g, '') : `booxury-proof-${base.size}-${base.pages}hal.pdf`;
+
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+      addToast('Proof PDF berhasil didownload.', 'success');
+    } catch (err) {
+      addToast(`Gagal download proof: ${(err as Error).message}`, 'error');
+    } finally {
+      setBlueprintLoading(false);
+    }
   };
 
   return (
@@ -254,7 +321,7 @@ export default function ReviewPage() {
         </span>
       </label>
 
-      {/* CTA */}
+      {/* CTA — primary */}
       <button
         onClick={handleAddToCart}
         disabled={!allPass}
@@ -263,6 +330,20 @@ export default function ReviewPage() {
         }`}
       >
         {allPass ? 'Tambah ke Keranjang' : 'Centang konfirmasi untuk lanjut'}
+      </button>
+
+      {/* CTA — secondary: download Proof PDF (no checkout required) */}
+      <button
+        onClick={handleDownloadProof}
+        disabled={blueprintLoading}
+        title="Download Proof PDF — tanpa login, tanpa checkout"
+        className={`w-full py-3 rounded-xl font-semibold text-sm border transition-colors ${
+          blueprintLoading
+            ? 'border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
+            : 'border-brand-700 text-brand-700 hover:bg-brand-700 hover:text-white'
+        }`}
+      >
+        {blueprintLoading ? 'Generating…' : '⤓ Download Proof PDF'}
       </button>
 
       <button onClick={goBack}

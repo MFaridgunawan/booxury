@@ -9,6 +9,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "studio": "prisma studio",
     "seed": "prisma db seed",
+    "demo:seed": "tsx prisma/demo-seed.ts",
     "generate": "prisma generate"
   },
   "dependencies": {
@@ -21,5 +22,6 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
-  }
+  },
+  "type": "module"
 }
