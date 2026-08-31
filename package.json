@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "bootstrap": "bash ./setup.sh",
     "dev": "turbo dev",
     "build": "turbo build",
     "test": "turbo test",

@@ -30,30 +30,55 @@ podman --version   # atau docker --version
 
 ## 🚀 Cara Menjalankan dari Awal
 
-### 1. Clone & masuk direktori
+### Quick Start (2 langkah)
 
 ```bash
-git clone https://github.com/MFaridgunawan/booxury.git
+# 1. Clone
+ git clone https://github.com/MFaridgunawan/booxury.git
 cd booxury
+
+# 2. Setup sekali (install deps + database + env + migrate + seed)
+pnpm bootstrap
+
+# 3. Jalankan (setiap hari)
+pnpm dev
 ```
 
-> Branch yang dipakai adalah **`main`**.
+Buka **http://localhost:3000**.
 
-### 2. Install dependencies
+`pnpm bootstrap` otomatis:
+- mengecek prasyarat (Node, pnpm, Podman/Docker),
+- install dependencies & generate Prisma client,
+- membuat container PostgreSQL 16 `booxury-pg` (port 5433) jika belum ada,
+- membuat file `.env` (root & `apps/web`) bila belum ada (AUTH_SECRET digenerate otomatis),
+- menjalankan migrasi + seed (data dasar, akun demo, desain & order demo).
+
+> **Idempoten** — aman dijalankan ulang; tidak menimpa container/.env yang sudah ada.
+>
+> Jika `pnpm bootstrap` tidak terdaftar (versi pnpm lain), jalankan langsung: `bash setup.sh`
+>
+> **Tanpa Podman/Docker?** `pnpm bootstrap` akan memperingatkan; sediakan PostgreSQL 16 sendiri di `$DATABASE_URL` lalu jalankan ulang.
+
+### PDF worker (terminal terpisah)
+
+Worker memproses pembuatan PDF custom cover di background:
+
+```bash
+pnpm --filter @booxury/api worker
+```
+
+---
+
+### Setup manual langkah-per-langkah (opsional, bila ingin kontrol penuh)
+
+#### 1. Install dependencies
 
 ```bash
 pnpm install
-```
-
-Setelah install, generate Prisma client:
-
-```bash
 pnpm --filter @booxury/database generate
 ```
 
-### 3. Setup database (PostgreSQL via container)
-
-Jalankan PostgreSQL 16 dengan nama `booxury-pg` di port **5433**:
+#### 2. Setup database (PostgreSQL via container)
 
 ```bash
 podman run -d --name booxury-pg \
@@ -66,7 +91,7 @@ podman run -d --name booxury-pg \
 
 > Jika pakai Docker, ganti `podman` dengan `docker`. Pastikan port 5433 tidak dipakai aplikasi lain.
 
-### 4. Konfigurasi environment (`.env`)
+#### 3. Konfigurasi environment (`.env`)
 
 Siapkan file `.env` di **root** project:
 
@@ -84,32 +109,12 @@ NODE_ENV="development"
 >
 > **Opsional** — upload file cover disimpan ke Cloudflare R2. Lewati dulu jika tidak punya akun R2 (`R2_*` dibiarkan kosong; fallback lokal bekerja).
 
-### 5. Migrasi & seed database
-
-Jalankan migrasi, lalu isi data dasar (bahan, ukuran, aksesoris, akun demo), lalu data demo (desain & order contoh):
+#### 4. Migrasi & seed database
 
 ```bash
-pnpm db:migrate          # prisma migrate dev (pakai migration yang ada)
-pnpm db:seed             # data dasar + akun demo
-pnpm --filter @booxury/database demo:seed   # desain & order demo
-```
-
-### 6. Jalankan aplikasi
-
-Start web (Next.js `:3000`) dan API (Fastify `:3001`) bersamaan:
-
-```bash
-pnpm dev
-```
-
-Buka **http://localhost:3000** di browser.
-
-### 7. Jalankan PDF worker (terminal terpisah)
-
-Worker memproses pembuatan PDF custom cover di background:
-
-```bash
-pnpm --filter @booxury/api worker
+pnpm db:migrate
+pnpm db:seed
+pnpm --filter @booxury/database demo:seed
 ```
 
 ---
