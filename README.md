@@ -4,6 +4,15 @@
 
 Proyek PBL Politeknik Manufaktur Bandung.
 
+## ✨ Fitur
+
+- **Customizer 3D & desain cover** — editor Konva (wizard multi-langkah: ukuran, bahan, cover, finish, review)
+- **Preview 3D buku** — Three.js (React Three Fiber / `@booxury/three`)
+- **Harga real-time** — dihitung server-side (`pricing-engine` + rumus spine `spine-calc`)
+- **Checkout & keranjang** — alur belanja lengkap
+- **Autentikasi** — login customer & admin (NextAuth v5 + JWT)
+- **Admin panel** — kelola order & bahan
+- **PDF engine** — generate PDF custom cover & proof untuk produksi
 ---
 
 ## 📋 Prasyarat
@@ -34,7 +43,7 @@ podman --version   # atau docker --version
 
 ```bash
 # 1. Clone
- git clone https://github.com/MFaridgunawan/booxury.git
+git clone https://github.com/MFaridgunawan/booxury.git
 cd booxury
 
 # 2. Setup sekali (install deps + database + env + migrate + seed)
