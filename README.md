@@ -1,160 +1,221 @@
-# Booxury — Sprint 1 (MVP)
+# Booxury
 
-> **Custom Hardcover Notebook Web-to-Print** — Politeknik Manufaktur Bandung project-based learning
-> Sprint: 7 hari (Minggu 23 Agt – Minggu 30 Agt 2026) | Demo target: 30 Agt 2026
-> **Build status**: ✅ @booxury/web 13/13 pages clean · @booxury/api tsc clean
+**Custom Hardcover Notebook Web-to-Print** — aplikasi e-commerce untuk membuat notebook hardcover kustom (pilih ukuran, bahan, cover, finish, lalu checkout). Monorepo pnpm + Turborepo: frontend Next.js 15, backend Fastify, database PostgreSQL 16.
+
+Proyek PBL Politeknik Manufaktur Bandung.
 
 ---
 
-## ⚡ Quick Start (untuk agent baru, esp. Sonnet 4.6)
+## 📋 Prasyarat
+
+Instal terlebih dahulu di mesin Anda:
+
+- **Node.js** `>= 20` — [nodejs.org](https://nodejs.org)
+- **pnpm** `9.x` — aktifkan via Corepack:
+  ```bash
+  corepack enable pnpm
+  # atau global: npm install -g pnpm@9
+  ```
+- **Podman** atau **Docker** — untuk menjalankan PostgreSQL 16
+
+Cek versi:
 
 ```bash
+node -v        # >= v20
+pnpm -v        # 9.x
+podman --version   # atau docker --version
+```
+
+---
+
+## 🚀 Cara Menjalankan dari Awal
+
+### 1. Clone & masuk direktori
+
+```bash
+git clone https://github.com/MFaridgunawan/booxury.git
 cd booxury
+```
 
-# 1. Install
+> Branch yang dipakai adalah **`main`**.
+
+### 2. Install dependencies
+
+```bash
 pnpm install
+```
 
-# 2. Database (Podman PostgreSQL 16 on port 5433)
+Setelah install, generate Prisma client:
+
+```bash
+pnpm --filter @booxury/database generate
+```
+
+### 3. Setup database (PostgreSQL via container)
+
+Jalankan PostgreSQL 16 dengan nama `booxury-pg` di port **5433**:
+
+```bash
 podman run -d --name booxury-pg \
-  -e POSTGRES_DB=booxury -e POSTGRES_USER=booxury \
-  -e POSTGRES_PASSWORD=booxury_dev -p 5433:5432 \
+  -e POSTGRES_DB=booxury \
+  -e POSTGRES_USER=booxury \
+  -e POSTGRES_PASSWORD=booxury_dev \
+  -p 5433:5432 \
   docker.io/library/postgres:16-alpine
+```
 
-# 3. Prisma setup
-cd packages/database
-pnpm prisma migrate dev --name init
-pnpm prisma db seed       # materials, sizes, demo users
-pnpm demo:seed            # 3 demo designs + 5 demo orders
-cd ../..
+> Jika pakai Docker, ganti `podman` dengan `docker`. Pastikan port 5433 tidak dipakai aplikasi lain.
 
-# 4. Run
-pnpm dev                  # Next.js :3000 + Fastify :3001 concurrently
+### 4. Konfigurasi environment (`.env`)
 
-# 5. PDF worker (separate terminal)
+Siapkan file `.env` di **root** project:
+
+```
+DATABASE_URL="postgresql://booxury:booxury_dev@localhost:5433/booxury"
+AUTH_SECRET="<generate-secure-string>"
+NEXTAUTH_SECRET="<generate-secure-string>"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_API_URL="http://localhost:3001"
+NEXT_PUBLIC_API_URL="http://localhost:3001"
+NODE_ENV="development"
+```
+
+> Generate `AUTH_SECRET` / `NEXTAUTH_SECRET` dengan: `openssl rand -base64 32`
+>
+> **Opsional** — upload file cover disimpan ke Cloudflare R2. Lewati dulu jika tidak punya akun R2 (`R2_*` dibiarkan kosong; fallback lokal bekerja).
+
+### 5. Migrasi & seed database
+
+Jalankan migrasi, lalu isi data dasar (bahan, ukuran, aksesoris, akun demo), lalu data demo (desain & order contoh):
+
+```bash
+pnpm db:migrate          # prisma migrate dev (pakai migration yang ada)
+pnpm db:seed             # data dasar + akun demo
+pnpm --filter @booxury/database demo:seed   # desain & order demo
+```
+
+### 6. Jalankan aplikasi
+
+Start web (Next.js `:3000`) dan API (Fastify `:3001`) bersamaan:
+
+```bash
+pnpm dev
+```
+
+Buka **http://localhost:3000** di browser.
+
+### 7. Jalankan PDF worker (terminal terpisah)
+
+Worker memproses pembuatan PDF custom cover di background:
+
+```bash
 pnpm --filter @booxury/api worker
 ```
 
-**Demo login**:
-- Customer: `demo@booxury.local / demo123`
-- Admin: `admin@booxury.local / admin123`
+---
 
-**Build verification**:
+## 🔐 Akun Demo
+
+| Role     | Email                    | Password   |
+|----------|--------------------------|------------|
+| Customer | `demo@booxury.local`     | `demo123`  |
+| Admin    | `admin@booxury.local`    | `admin123` |
+
+---
+
+## 🧪 Verifikasi & Perintah Berguna
+
+Cek API liveness:
+
 ```bash
-pnpm build                 # full monorepo — both packages must be clean
-curl http://localhost:3001/health   # API liveness
+curl http://localhost:3001/health
+```
+
+Build seluruh monorepo (validasi TypeScript semua package):
+
+```bash
+pnpm build
+```
+
+Menjalankan test unit:
+
+```bash
+pnpm test
+```
+
+Prisma Studio (GUI database):
+
+```bash
+pnpm db:studio
 ```
 
 ---
 
-## 🎯 Untuk Sonnet 4.6 (Tepat Sasaran)
+## 🏗️ Arsitektur
 
-**Sebelum mulai kerja**, baca:
-1. `../progress/README.md` — sprint summary + 3D decision + agent guidance
-2. `../progress/ERRORS.md` — 7 errors history (jangan ulang!)
-3. `../progress/Hari-N.md` — hari ini (PLAN + LOG + CHECKPOINT)
-4. `CLAUDE.md` (root ini) — konvensi stack
-
-**Prinsip kerja Sonnet**:
-- Eksekusi 1 task → update LOG di `Hari-N.md` dengan format `HH:MM — [Task N] — ✅/⚠️/❌`
-- Append error baru ke `ERRORS.md` dengan format `E[NNN]`
-- Build verify setelah task fungsional (`pnpm --filter @booxury/web build`)
-- **Jangan pilih library baru** — pakai yang sudah ada di package.json
-- **Jangan import dari backend ke frontend** atau sebaliknya
-- **Server-authoritative**: hitung price di API, frontend cuma display
-- **Snapshot pattern**: order_items freeze design/finish config saat order
-
-**Escalate ke Opus kalau**:
-- Build gagal 2x berturut-turut dengan error yang sama
-- TypeScript error recursive (>5 level)
-- Keputusan desain affect > 3 file
-- Butuh input user (data percetakan, dll)
-
----
-
-## 🏗️ Stack & Architecture
-
-**Monorepo**: pnpm workspaces + Turborepo at `booxury/`
+**Monorepo**: pnpm workspaces + Turborepo.
 
 | Layer | Tech | Port |
 |---|---|---|
-| Web (BFF proxy) | Next.js 15 App Router + Zustand + Konva.js + Tailwind | 3000 |
+| Web (BFF proxy) | Next.js 15 App Router + Zustand + Konva.js + Tailwind + Three.js | 3000 |
 | API | Fastify + Prisma | 3001 |
-| DB | PostgreSQL 16 (via podman) | 5433 |
+| DB | PostgreSQL 16 (Podman/Docker) | 5433 |
 | Auth | NextAuth v5 (credentials → Fastify JWT) | — |
-
-**6 backend modules** di `apps/api/src/modules/`:
-- `catalog/` — `/store/materials`, `/store/sizes`, `/store/accessories`
-- `configurator/` — `/api/designs` CRUD
-- `pricing/` — `/api/price-quote`
-- `commerce/` — `/api/cart/items`, `/api/checkout`
-- `admin/` — `/admin/*` (orders, materials)
-- `auth/` (plugin) — `/api/auth/login`
-
-**Shared packages**:
-- `@booxury/pricing-engine` — pure pricing functions + 13 tests
-- `@booxury/spine-calc` — hardcover spine formula + 6 tests
-- `@booxury/design-types` — Zod schemas + Konva types
-- `@booxury/database` — Prisma schema + seed
-- `@booxury/three` — 3D scene helpers (Hari 5)
-
----
-
-## 📂 Folder Layout
+| PDF worker | Fastify background worker | — |
 
 ```
 booxury/
 ├── apps/
-│   ├── web/                    # Next.js 15
-│   │   ├── app/                # routes (login, customize/*, checkout/*, admin/*)
-│   │   ├── components/
-│   │   │   └── configurator/
-│   │   │       ├── CanvasEditor/  # Konva editor (Hari 3)
-│   │   │       └── SpinePreview.tsx
-│   │   ├── lib/
-│   │   │   ├── auth.ts         # NextAuth v5
-│   │   │   └── stores/configurator.ts  # Zustand
-│   │   └── middleware.ts       # route protection
-│   └── api/                    # Fastify
+│   ├── web/                 # Next.js 15 — UI + BFF proxy
+│   │   ├── app/             # routes: login, customize/*, checkout/*, admin/*
+│   │   ├── components/      # configurator (Konva editor), three, wizard
+│   │   ├── lib/             # auth, stores (Zustand), api-client
+│   │   └── middleware.ts    # route protection
+│   └── api/                 # Fastify — REST API
 │       ├── src/
 │       │   ├── server.ts
-│       │   ├── types.ts        # Fastify augmentations
 │       │   ├── plugins/auth.ts
-│       │   └── modules/
+│       │   ├── worker.ts    # PDF worker
+│       │   └── modules/     # catalog, configurator, pricing, commerce, admin, production
 │       └── tsconfig.json
 ├── packages/
-│   ├── database/               # Prisma schema + seed
-│   ├── pricing-engine/         # pure TS + tests
-│   ├── spine-calc/             # pure TS + tests
-│   ├── design-types/           # Zod schemas
-│   └── three/                  # 3D helpers
+│   ├── database/            # Prisma schema, migrasi & seed
+│   ├── pricing-engine/      # fungsi harga murni (TS)
+│   ├── spine-calc/          # rumus spine hardcover (TS)
+│   ├── design-types/        # Zod schemas & tipe Konva
+│   ├── pdf-engine/          # pembuatan PDF custom cover
+│   └── three/               # helper scene 3D
 └── pnpm-workspace.yaml
 ```
 
----
+**Modul backend** (`apps/api/src/modules/`):
 
-## 🚫 Anti-Patterns
-
-- ❌ Import `prisma` langsung di route handler → pakai `fastify.prisma`
-- ❌ Hitung spine/price di frontend → pakai shared packages atau API
-- ❌ Konva code di non-`'use client'` file → SSR crash
-- ❌ Magic numbers → extract ke named constants
-- ❌ TODOs di committed code
-- ❌ Import backend module dari frontend (cross-boundary)
-- ❌ Download external 3D assets (procedural only — see `progress/README.md` 3D Decision)
+- `catalog/` — `/store/materials`, `/store/sizes`, `/store/accessories`
+- `configurator/` — CRUD desain kustom
+- `pricing/` — `/api/price-quote` (server-authoritative, harga dihitung di API)
+- `commerce/` — cart & checkout
+- `admin/` — manajemen order & bahan
+- `production/` — alur produksi
+- `auth/` (plugin) — `/api/auth/login`
 
 ---
 
-## 📋 Daily Status
+## ❓ Troubleshooting
 
-Lihat `../progress/README.md` untuk sprint summary atau `progress/Hari-N.md` per hari.
+**`pnpm: command not found`**
+→ Aktifkan Corepack: `corepack enable pnpm`.
 
-Current: **Hari 4 in progress** (5/5 DoD complete; restore design carry-over).
+**Koneksi DB ditolak saat migrate/seed**
+→ Pastikan container PostgreSQL berjalan: `podman ps`. Cek `DATABASE_URL` di `.env` cocok dengan credential container.
+
+**Port 3000/3001 sudah terpakai**
+→ Hentikan proses pemakai port tersebut, atau ubah port di `apps/web/package.json` (`next dev -p ...`) & `apps/api/src/server.ts`.
+
+**Prisma client tidak ditemukan**
+→ Jalankan ulang `pnpm --filter @booxury/database generate`.
 
 ---
 
-## 🔗 Key References
+## 📄 Lisensi
 
-- Sprint roadmap: `../planning/roadmap-sprint1.md`
-- Domain specs: `../planning/README.md` (§1–8)
-- Demo flow (26 steps): `../planning/roadmap-sprint1.md` Hari 7
-- Error history: `../progress/ERRORS.md`
+Proyek ini adalah bagian dari kegiatan Project-Based Learning — Politeknik Manufaktur Bandung.
